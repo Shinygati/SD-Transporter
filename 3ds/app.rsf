@@ -1,0 +1,23 @@
+BasicInfo:
+  Title: 3DSPokewalker
+  CompanyCode: "00"
+  ProductCode: CTR-P-PW3D
+  ContentType: Application
+  Logo: Homebrew
+TitleInfo:
+  Category: Application
+  UniqueId: 0xF7E12
+Option:
+  UseOnSD: true
+  FreeProductCode: true
+  MediaFootPadding: false
+  EnableCrypt: false
+  EnableCompress: true
+AccessControlInfo:
+  FileSystemAccess:
+    - DirectSdmc
+    - DirectSdmcWrite
+SystemControlInfo:
+  SaveDataSize: 0KB
+  RemasterVersion: 1
+  StackSize: 0x40000

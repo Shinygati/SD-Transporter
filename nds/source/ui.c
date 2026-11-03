@@ -1,0 +1,471 @@
+/* Native DS interface, designed for 256x192 screens. GPL-3.0-or-later. */
+#include "ui.h"
+#include "nds_ui.h"
+#include "species.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#define RGB(r, g, b)                                                           \
+  (0x8000 | ((r) >> 3) | (((g) >> 3) << 5) | (((b) >> 3) << 10))
+static const uint16_t BG = RGB(12, 24, 32), PANEL = RGB(24, 45, 53),
+                      INK = RGB(242, 250, 242), MUTED = RGB(175, 198, 191),
+                      TEAL = RGB(84, 232, 188), GOLD = RGB(255, 213, 112),
+                      RED = RGB(255, 154, 154), LCD = RGB(198, 219, 168);
+static UIState cached[2];
+static int valid[2];
+static void text(int x, int y, uint16_t color, const char *s, int columns) {
+  ndsUiText(x, y, 1, color, s, columns);
+}
+static void fmt(int x, int y, uint16_t color, int columns, const char *format,
+                ...) {
+  char buffer[256];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+  text(x, y, color, buffer, columns);
+}
+static void plain(char *out, const char *in, unsigned size) {
+  unsigned n = 0;
+  while (*in && n + 1 < size) {
+    unsigned char c = *in++;
+    if (c < 128)
+      out[n++] = c;
+    else if (c == 0xc3 && *in) {
+      unsigned char d = *in++;
+      out[n++] = (d == 0xa9 ? 'e' : d == 0x89 ? 'E' : '?');
+    } else {
+      while (((unsigned char)*in & 0xc0) == 0x80)
+        in++;
+      out[n++] = '.';
+    }
+  }
+  out[n] = 0;
+}
+static void wrap(int x, int y, uint16_t color, const char *value, int columns,
+                 int lines) {
+  char buffer[512];
+  plain(buffer, value, sizeof(buffer));
+  const char *p = buffer;
+  for (int row = 0; row < lines && *p; row++) {
+    while (*p == ' ' || *p == '\n')
+      p++;
+    unsigned n = 0, space = 0;
+    while (p[n] && p[n] != '\n' && n < (unsigned)columns) {
+      if (p[n] == ' ')
+        space = n;
+      n++;
+    }
+    if (p[n] && p[n] != '\n' && space)
+      n = space;
+    char line[40];
+    memcpy(line, p, n);
+    line[n] = 0;
+    if (row == lines - 1 && p[n] && n >= 3)
+      memcpy(line + n - 3, "...", 3);
+    text(x, y + row * 11, color, line, columns);
+    p += n;
+  }
+}
+static void panel(int x, int y, int w, int h, int selected) {
+  ndsUiRect(x, y, w, h, selected ? TEAL : PANEL);
+  if (selected)
+    ndsUiRect(x + 2, y + 2, w - 4, h - 4, RGB(28, 73, 67));
+}
+static void header(const char *title) {
+  ndsUiText(8, 6, 2, INK, title, 15);
+  ndsUiRect(8, 27, 240, 1, TEAL);
+}
+static void footer(const char *hint) {
+  ndsUiRect(0, 177, 256, 15, PANEL);
+  text(8, 181, INK, hint, 30);
+}
+static void bar(int x, int y, int w, int h, float progress, uint16_t color) {
+  if (progress < 0)
+    progress = 0;
+  if (progress > 1)
+    progress = 1;
+  ndsUiRect(x, y, w, h, PANEL);
+  ndsUiRect(x + 1, y + 1, (int)((w - 2) * progress), h - 2, color);
+}
+static void portrait(const uint8_t *ee, unsigned offset, int w, int h, int x,
+                     int y, int scale) {
+  if (!ee || offset + (unsigned)(w * h / 4) > WALKER_FILE_SIZE)
+    return;
+  const uint16_t shades[] = {LCD, RGB(153, 180, 132), RGB(92, 126, 91),
+                             RGB(43, 69, 57)};
+  for (int py = 0; py < h; py++)
+    for (int px = 0; px < w; px++) {
+      unsigned pos = offset + ((py / 8) * w + px) * 2, bit = py & 7;
+      unsigned c = ((ee[pos] >> bit) & 1) * 2 + ((ee[pos + 1] >> bit) & 1);
+      if (c)
+        ndsUiRect(x + px * scale, y + py * scale, scale, scale, shades[c]);
+    }
+}
+int uiInit(void) {
+  memset(valid, 0, sizeof(valid));
+  return ndsUiInit();
+}
+void uiExit(void) {}
+void uiBegin(int bottom) { (void)bottom; }
+void uiEnd(void) { ndsUiEnd(); }
+void uiNotify(UIState *s, const char *value, uint64_t now) {
+  snprintf(s->toast, sizeof(s->toast), "%s", value);
+  s->toastScreen = s->screen;
+  s->toastUntil = now + 5000;
+}
+void uiUpdateClock(UIState *s, uint64_t now) {
+  s->clockMs = now;
+  if (now >= s->toastUntil || s->screen != s->toastScreen) {
+    s->toast[0] = 0;
+    s->toastUntil = 0;
+  }
+}
+void uiTop(const UIState *s) {
+  UIState key = {0};
+  key.info = s->info;
+  key.loaded = s->loaded;
+  key.pending = s->pending;
+  key.walkingEnabled = s->walkingEnabled;
+  key.secondsPerStep = s->secondsPerStep;
+  key.phoneLocked = s->phoneLocked;
+  key.frame = (s->frame / 24) & 1;
+  key.battle = s->battle;
+  key.screen = s->screen == UI_BATTLE ? UI_BATTLE : 0;
+  snprintf(key.filename, sizeof(key.filename), "%s", s->filename);
+  if (valid[0] && !memcmp(&key, &cached[0], sizeof(key)))
+    return;
+  cached[0] = key;
+  valid[0] = 1;
+  ndsUiBegin(0, BG);
+  text(8, 5, TEAL, "NDS POKEWALKER", 30);
+  if (!s->loaded || !s->info.hasPokemon) {
+    ndsUiRect(60, 38, 136, 99, PANEL);
+    text(88, 80, GOLD, "NO PARTNER", 13);
+    wrap(16, 149, INK,
+         s->phoneLocked ? "Walker is checked out to Android."
+                        : "Choose an active walker below.",
+         28, 2);
+    return;
+  }
+  fmt(8, 20, INK, 30, "%s  Lv %u", speciesName(s->info.species), s->info.level);
+  if (s->screen == UI_BATTLE) {
+    ndsUiRect(40, 37, 176, 75, LCD);
+    portrait(s->ee, 0x91be + key.frame * 192, 32, 24, 46, 49, 2);
+    portrait(s->ee, 0x9a7e + s->battle.encounter * 384 + key.frame * 192, 32,
+             24, 144, 49, 2);
+    fmt(8, 123, INK, 30, "Partner HP %d/4", s->battle.playerHp);
+    fmt(8, 138, GOLD, 30, "Wild HP    %d/4", s->battle.enemyHp);
+    text(8, 158, MUTED,
+         speciesName(walkerRoutePokemonId(s->ee, s->battle.encounter)), 30);
+  } else {
+    /* Integer 2x scale preserves every pixel of the original walker portrait.
+     */
+    ndsUiRect(60, 34, 136, 100, PANEL);
+    ndsUiRect(64, 36, 128, 96, LCD);
+    portrait(s->ee, 0x933e + key.frame * 768, 64, 48, 64, 36, 2);
+    bar(8, 135, 240, 3, (s->info.stepsThisWatt + s->pending) % 20 / 20.f, TEAL);
+    text(8, 140, MUTED, "STROLL STEPS", 16);
+    text(176, 140, MUTED, "WATTS", 9);
+    char value[32];
+    snprintf(value, sizeof(value), "%lu",
+             (unsigned long)(s->info.strollSteps + s->pending));
+    ndsUiText(8, 151, 2, INK, value, 9);
+    snprintf(value, sizeof(value), "%u", s->info.watts);
+    ndsUiText(176, 151, 2, GOLD, value, 4);
+  }
+  fmt(8, 171, TEAL, 30, "Today %lu  %s",
+      (unsigned long)(s->info.todaySteps + s->pending),
+      s->walkingEnabled ? "Walking" : "Paused");
+  text(8, 183, MUTED, s->info.route[0] ? s->info.route : "Your next adventure",
+       30);
+}
+void uiBottom(const UIState *s) {
+  UIState key = *s;
+  key.frame = s->screen == UI_SCAN ? s->frame / 8 : 0;
+  key.clockMs = key.toastUntil = 0;
+  key.now = 0;
+  key.progress = (int)(s->progress * 100) / 100.f;
+  if (valid[1] && !memcmp(&key, &cached[1], sizeof(key)))
+    return;
+  cached[1] = key;
+  valid[1] = 1;
+  ndsUiBegin(1, BG);
+  if (s->saveError) {
+    header(s->discardPrompt ? "Discard changes" : "Save failed");
+    if (s->discardPrompt) {
+      wrap(8, 40, INK,
+           "Discard unsaved changes and reload the file on the card?", 30, 4);
+      wrap(8, 105, GOLD, "Progress still in memory will be lost.", 30, 3);
+      footer("A Discard   B Keep");
+    } else {
+      wrap(8, 38, RED, s->saveStage, 30, 2);
+      wrap(8, 66, INK, s->saveReason, 30, 7);
+      panel(8, 150, 116, 23, s->saveChoice == 0);
+      panel(132, 150, 116, 23, s->saveChoice == 1);
+      text(16, 158, INK, "Retry save", 12);
+      text(140, 158, INK, "Discard...", 12);
+      footer("D-pad A Select Y Retry");
+    }
+    return;
+  }
+  if (s->screen == UI_SCAN) {
+    header(s->validation ? "Checking files" : "Finding walkers");
+    wrap(8, 40, INK,
+         s->validation ? "Reading your walker files."
+                       : "Searching /roms and subfolders.",
+         30, 3);
+    float progress = s->validation ? s->progress : (s->frame % 120) / 119.f;
+    bar(8, 94, 240, 12, progress, TEAL);
+    fmt(8, 119, INK, 30, "%d folders  %d files", s->dirs, s->files);
+    fmt(8, 137, TEAL, 30, "%d walkers found", s->count);
+    if (s->validation)
+      fmt(8, 155, MUTED, 30, "Checked %d of %d", s->done, s->total);
+    footer("START Cancel search");
+    return;
+  }
+  if (s->screen == UI_LIST) {
+    header("Your walkers");
+    if (!s->count)
+      wrap(8, 42, INK,
+           "No .walker files under /roms. Enable Virtual Pokewalker in the "
+           "HGSS Y menu first.",
+           30, 7);
+    for (int row = 0; row < 7 && s->page + row < s->count; row++) {
+      int i = s->page + row, y = 35 + row * 19;
+      panel(8, y, 240, 17, i == s->cursor);
+      const char *p = strrchr(s->paths[i], '/');
+      p = p ? p + 1 : s->paths[i];
+      char name[512];
+      snprintf(name, sizeof(name), "%s", p);
+      char *ext = strrchr(name, '.');
+      if (ext)
+        *ext = 0;
+      text(12, y + 5, INK, name, s->statuses[i] >= 2 ? 22 : 28);
+      if (s->statuses[i] >= 2)
+        text(196, y + 5, GOLD, s->statuses[i] == 3 ? "Phone" : "Empty", 6);
+    }
+    if (s->scanLimited)
+      text(8, 169, GOLD, "Search limit reached", 30);
+    footer(s->wifiAvailable ? "A Open X Scan Y Wi-Fi START Exit"
+                            : "A Open X Scan L/R Pg START Exit");
+    return;
+  }
+  if (s->screen == UI_SYNC) {
+    header("Wi-Fi sync");
+    text(8, 39, MUTED, "Console IP address", 30);
+    fmt(8, 55, TEAL, 30, "%s:30820", s->syncAddress);
+    wrap(8, 77, INK, s->syncStatus, 30, 6);
+    wrap(8, 151, MUTED, "Use the same local Wi-Fi on both devices.", 30, 2);
+    footer(s->phoneLocked ? "B Back  X Force unlock" : "B Back  START Exit");
+    return;
+  }
+  if (s->screen == UI_LOCKED || s->screen == UI_FORCE) {
+    int force = s->screen == UI_FORCE;
+    header(force ? "Force unlock?" : "On Android");
+    wrap(
+        8, 40, INK,
+        force
+            ? "Restore the console snapshot? Phone progress will be discarded. "
+              "The old Android session cannot sync back until a fresh handoff."
+            : "This walker is locked while Android owns it. Return it over "
+              "Wi-Fi, or recover the local snapshot if the phone is "
+              "unavailable.",
+        30, 11);
+    footer(force              ? "A Restore and revoke B Cancel"
+           : s->wifiAvailable ? "A Sync X Recover Y Wi-Fi B Back"
+                              : "A Sync X Recover B Back");
+    return;
+  }
+  if (s->screen == UI_WIFI) {
+    if (s->wifiPhase == 6) {
+      header("Network name");
+      text(8, 33, INK, s->wifiSsid, 30);
+      if (strlen(s->wifiSsid) > 30)
+        text(8, 44, INK, s->wifiSsid + 30, 2);
+      unsigned length = strlen(s->wifiSsid);
+      if (length < 32)
+        text(8 + (length % 30) * 8, 33 + (length / 30) * 11, TEAL, "|", 1);
+      if (!strncmp(s->wifiMessage, "Enter a name", 12))
+        text(8, 56, GOLD, "A name is required", 22);
+      else
+        fmt(8, 56, MUTED, 22, "R Keyboard page %d/2", s->wifiTextPage + 1);
+      fmt(208, 56, TEAL, 5, "%u/32", length);
+      for (int i = 0; i < 48; i++) {
+        int x = 8 + (i % 8) * 30, y = 68 + (i / 8) * 16;
+        unsigned ch = 32 + s->wifiTextPage * 48 + i;
+        panel(x, y, 28, 14, i == s->wifiKeyCursor);
+        char glyph[2] = {ch < 127 ? (char)ch : ' ', 0};
+        text(x + (ch == 32 ? 6 : 10), y + 3, INK, ch == 32 ? "SP" : glyph, 2);
+      }
+      footer("A Add X Del R Page START Done");
+      return;
+    }
+    if (s->wifiPhase == 2) {
+      header("WEP key");
+      text(8, 33, MUTED, "Use 10, 26 or 32 hex digits", 30);
+      char masked[33];
+      unsigned len = strlen(s->wifiKey);
+      memset(masked, '*', len);
+      masked[len] = 0;
+      fmt(8, 48, INK, 30, "%u: %s", len, masked);
+      for (int i = 0; i < 16; i++) {
+        int x = 8 + (i % 4) * 60, y = 65 + (i / 4) * 24;
+        panel(x, y, 56, 21, i == s->wifiKeyCursor);
+        char ch[2] = {"0123456789ABCDEF"[i], 0};
+        text(x + 24, y + 7, INK, ch, 1);
+      }
+      if (s->wifiMessage[0] != 'E')
+        wrap(8, 164, GOLD, s->wifiMessage, 30, 1);
+      footer("A Add X Delete START Connect");
+      return;
+    }
+    header("Wi-Fi setup");
+    if (s->wifiPhase == 1) {
+      for (int row = 0; row < 6; row++) {
+        int i = s->wifiCursor / 6 * 6 + row;
+        if (i >= s->wifiCount)
+          break;
+        int y = 38 + row * 21;
+        panel(8, y, 240, 19, i == s->wifiCursor);
+        text(12, y + 6, INK, s->wifiNames[i], 22);
+        text(192, y + 6, s->wifiSecurity[i] == 2 ? RED : TEAL,
+             s->wifiSecurity[i] == 2 ? "WPA"
+             : s->wifiSecurity[i]    ? "WEP"
+                                     : "Open",
+             6);
+      }
+      wrap(8, 165, GOLD, s->wifiMessage, 30, 1);
+      footer("A Select Y SSID R Scan B Back");
+    } else {
+      wrap(8, 42, s->wifiPhase == 4 ? TEAL : INK, s->wifiMessage, 30, 9);
+      wrap(8, 151, MUTED, "DS Lite: open or WEP networks.", 30, 2);
+      footer(s->wifiPhase == 0 || s->wifiPhase == 5
+                 ? "Y Enter SSID R Rescan B Back"
+                 : "R Rescan B Back");
+    }
+    return;
+  }
+  const char *title = s->screen == UI_HOME       ? "Adventure menu"
+                      : s->screen == UI_SETTINGS ? "Settings"
+                      : s->screen == UI_RADAR    ? "Poke Radar"
+                      : s->screen == UI_DOWSE    ? "Dowsing"
+                      : s->screen == UI_BATTLE   ? "Choose a move"
+                      : s->screen == UI_PACK     ? "Your pack"
+                      : s->screen == UI_REPLACE  ? "Choose a slot"
+                      : s->screen == UI_CARD     ? "Trainer card"
+                                                 : "Journal";
+  header(title);
+  if (s->screen == UI_HOME) {
+    const char *a[] = {"Poke Radar",   "Dowsing",    "Your pack",
+                       "Trainer card", "Save steps", "Settings"};
+    const char *b[] = {"10 watts",     "3 watts",  "Rewards",
+                       "Stroll stats", "Save now", "Walking"};
+    if (s->pendingEncounter) {
+      a[0] = "Wild Pokemon";
+      b[0] = "Free battle";
+    }
+    for (int i = 0; i < 6; i++) {
+      int x = i % 2 ? 134 : 8, y = 36 + (i / 2) * 40;
+      panel(x, y, 114, 36, i == s->selection);
+      text(x + 6, y + 6, INK, a[i], 13);
+      text(x + 6, y + 21, i == s->selection ? GOLD : MUTED, b[i], 13);
+    }
+    wrap(8, 158, TEAL, s->toast, 30, 1);
+  } else if (s->screen == UI_SETTINGS) {
+    const char *labels[] = {"Time-based steps", "Pedometer", "Step rate",
+                            "Phone sync", "Wi-Fi setup"};
+    for (int i = 0; i < (s->wifiAvailable ? 5 : 4); i++) {
+      int y = 32 + i * (s->wifiAvailable ? 25 : 31);
+      panel(8, y, 240, s->wifiAvailable ? 23 : 28, i == s->selection);
+      text(16, y + 8, INK, labels[i], 21);
+      char value[24];
+      if (i == 2)
+        snprintf(value, sizeof(value),
+                 s->secondsPerStep >= 3600 ? "%uh" : "%us",
+                 s->secondsPerStep >= 3600 ? s->secondsPerStep / 3600
+                                           : s->secondsPerStep);
+      if (i != 2)
+        snprintf(value, sizeof(value), "%s",
+                 i >= 3              ? "Open"
+                 : i == 1            ? "N/A"
+                 : s->walkingEnabled ? "On"
+                                     : "Off");
+      text(200, y + 8, TEAL, value, 5);
+    }
+    wrap(8, 159, TEAL, s->toast, 30, 1);
+  } else if (s->screen == UI_RADAR || s->screen == UI_DOWSE) {
+    int radar = s->screen == UI_RADAR, cols = radar ? 2 : 3;
+    for (int i = 0; i < cols * 2; i++) {
+      int x = 11 + (i % cols) * (radar ? 124 : 81), y = 46 + (i / cols) * 50,
+          w = radar ? 110 : 73;
+      int selected = i == s->selectedPatch, active = i == s->activePatch;
+      panel(x, y, w, 42, selected);
+      text(x + 8, y + 9, active ? GOLD : MUTED,
+           active ? (radar ? "RUSTLING!" : "Searched") : "Grass",
+           radar ? 12 : 8);
+      if (selected)
+        text(x + 8, y + 25, TEAL, "A Search", radar ? 12 : 8);
+    }
+    if (radar)
+      bar(11, 137, 234, 5, s->progress, GOLD);
+    else
+      fmt(8, 34, GOLD, 30, "%d attempts left", s->attempts);
+    wrap(8, 148, INK, s->message, 30, 2);
+  } else if (s->screen == UI_BATTLE) {
+    const char *moves[] = {"Attack", "Evade", "Catch"};
+    for (int i = 0; i < 3; i++) {
+      panel(8 + i * 82, 46, 76, 53, i == s->selection);
+      text(16 + i * 82, 63, INK, moves[i], 8);
+    }
+    wrap(8, 113, INK,
+         s->message[0] ? s->message : "Lower HP makes catching easier.", 30, 5);
+  } else if (s->screen == UI_PACK || s->screen == UI_REPLACE) {
+    int replace = s->screen == UI_REPLACE;
+    for (int i = 0; i < 3; i++) {
+      unsigned id = (replace && s->replaceKind) ? walkerItemId(s->ee, i)
+                                                : walkerPokemonId(s->ee, i);
+      int y = 38 + i * (replace ? 32 : 18);
+      if (replace)
+        panel(8, y, 240, 28, i == s->selection);
+      if (replace && s->replaceKind)
+        fmt(16, y + 8, INK, 28, "%d. %s%u", i + 1,
+            id && id != 65535 ? "Item #" : "Empty ",
+            id && id != 65535 ? id : 0);
+      else
+        fmt(16, y + (replace ? 8 : 0), INK, 28, "%d. %s", i + 1,
+            id && id != 65535 ? speciesName(id) : "Empty");
+    }
+    if (!replace) {
+      text(8, 101, GOLD, "Items", 30);
+      for (int i = 0; i < 3; i++) {
+        unsigned id = walkerItemId(s->ee, i);
+        if (id && id != 65535)
+          fmt(16, 118 + i * 16, INK, 28, "%d. Item #%u", i + 1, id);
+        else
+          fmt(16, 118 + i * 16, MUTED, 28, "%d. Empty", i + 1);
+      }
+    } else
+      wrap(8, 144, INK, "A Replace selected slot. B Leave the new reward.", 30,
+           2);
+  } else if (s->screen == UI_CARD) {
+    fmt(8, 40, INK, 30, "Trainer: %s",
+        s->info.trainer[0] ? s->info.trainer : "Not registered");
+    fmt(8, 60, TEAL, 30, "%s  Lv %u", speciesName(s->info.species),
+        s->info.level);
+    fmt(8, 80, INK, 30, "Bond: %u / 255", s->info.friendship);
+    fmt(8, 100, INK, 30, "%u Pokemon / %u items packed", s->info.pokemonCount,
+        s->info.itemCount);
+    fmt(8, 120, INK, 30, "Lifetime steps: %lu",
+        (unsigned long)s->info.totalSteps);
+    fmt(8, 140, INK, 30, "Today: %lu", (unsigned long)s->info.todaySteps);
+    text(8, 160, MUTED, s->info.route, 30);
+  } else if (s->screen == UI_RESULT) {
+    wrap(8, 39, GOLD, s->message, 30, 3);
+    wrap(8, 79, INK, s->detail, 30, 8);
+    footer("A Continue B Back");
+    return;
+  }
+  footer(s->screen == UI_SETTINGS ? "D-pad/A Change B Back"
+                                  : "D-pad/Touch A Select B Back");
+}

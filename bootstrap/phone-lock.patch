@@ -1,0 +1,14 @@
+--- a/retail/arm9/include/walker_prepare.h
++++ b/retail/arm9/include/walker_prepare.h
+@@ -74,6 +74,11 @@
+ 
+ 	const std::string path = walkerPathForSave(conf->savPath);
+ 	struct stat st;
++	/* Any outstanding checkout blocks HGSS, including an interrupted return. */
++	if (stat((path + ".lease").c_str(), &st) == 0) {
++		walkerSkip(conf, "walker is checked out to Android; return or force-unlock it in the companion", path.c_str());
++		return;
++	}
+ 	if (stat(path.c_str(), &st) != 0) {
+ 		FILE *f = fopen(path.c_str(), "wb");
+ 		if (!f) {

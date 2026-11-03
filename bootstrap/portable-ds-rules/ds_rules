@@ -1,0 +1,45 @@
+# Legacy bootstrap rules. Platform tools (bin2s, mktemp, tr, rm) must be on PATH.
+PREFIX := $(LEGACY_DEVKITARM)/bin/arm-none-eabi-
+export CC := $(PREFIX)gcc
+export CXX := $(PREFIX)g++
+export CPP := $(PREFIX)cpp
+export AS := $(PREFIX)as
+export AR := $(PREFIX)ar
+export OBJCOPY := $(PREFIX)objcopy
+export NM := $(PREFIX)nm
+LIBNDS := $(LEGACY_LIBNDS)
+LIBCTRU := $(DEVKITPRO)/libctru
+SILENTCMD := @
+SILENTMSG := @echo
+ADD_COMPILE_COMMAND := @true
+define bin2o
+        $(eval _tmpasm := $(shell mktemp))
+        @bin2s -a 4 -H `(echo $(<F) | tr . _)`.h $< > $(_tmpasm)
+        @$(CC) -x assembler-with-cpp $(CPPFLAGS) $(ASFLAGS) -c $(_tmpasm) -o $(<F).o
+        @rm $(_tmpasm)
+endef
+%.o: %.cpp
+	@echo $(notdir $<)
+	@$(CXX) -std=gnu++17 -MMD -MP -MF $(DEPSDIR)/$*.d $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+%.o: %.c
+	@echo $(notdir $<)
+	@$(CC) -std=gnu11 -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -MMD -MP -MF $(DEPSDIR)/$*.d $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+%.o: %.s
+	@echo $(notdir $<)
+	@$(CC) -MMD -MP -MF $(DEPSDIR)/$*.d -x assembler-with-cpp $(CPPFLAGS) $(ASFLAGS) -c $< -o $@
+%.o: %.S
+	@echo $(notdir $<)
+	@$(CC) -MMD -MP -MF $(DEPSDIR)/$*.d -x assembler-with-cpp $(CPPFLAGS) $(ASFLAGS) -c $< -o $@
+.SECONDEXPANSION:
+%.elf: $$(OFILES)
+	@echo linking $(notdir $@)
+	@$(LD) $(LDFLAGS) $(OFILES) $(LIBPATHS) $(LIBS) -o $@
+	@$(NM) -CSn $@ > $(notdir $*.lst)
+%.bin:
+	@$(OBJCOPY) -O binary $< $@
+
+%.arm.o: CFLAGS += -marm
+%.arm.o: CXXFLAGS += -marm
+%.thumb.o: CFLAGS += -mthumb
+
+
