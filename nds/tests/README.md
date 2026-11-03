@@ -20,3 +20,13 @@ runs the Wi-Fi/UI suite first, then executes the installed DS `accept()` and
 legacy null-address rejection, checks that the server accepts a queued Android
 connection using valid output buffers, and verifies that NDS peers/listeners use
 `closesocket()` rather than the filesystem `close()` API.
+
+Run `python tests/test_handoff_ui.py` for the native screen guards. It executes the linked ARM entry points and verifies that an active peer or phone lease blocks Wi-Fi setup, that the scan screen stops rather than polls the server, and that Phone sync/response draining remain enabled. Services are simulated; reproduce interrupted transfers on real DS Lite/Android hardware as well.
+
+
+Run `python tests/test_save.py` after building to execute the linked save/load
+functions with deterministic card I/O. It refuses a silently dropped final
+replacement and reloads a caught Pokémon after clearing the emulated RAM.
+Run `python tests/test_direct_media.py` to verify that the installed libdvm
+zero-cache configuration returns the underlying media interface directly.
+These use synthetic data and do not read personal walker files.

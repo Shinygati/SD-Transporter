@@ -42,7 +42,7 @@ static char selected[600], address[48], statusText[160];
 static unsigned char request[WALKER_FILE_SIZE + 2048 + 1],
     snapshot[WALKER_FILE_SIZE];
 static unsigned received, headLength, bodyLength;
-static char response[640];
+static char response[640], returnReceipt[96];
 static const unsigned char *responseBody;
 static unsigned responseLength, sentHeader, sentBody;
 static int networkState, responding, draining;
@@ -142,7 +142,7 @@ static int listenNow(void) {
     return 0;
   }
   snprintf(statusText, sizeof(statusText),
-           "Ready for Android. Keep this app open.");
+           "Ready for phone. Keep this app open.");
   networkState = 2;
   return 1;
 }
@@ -198,10 +198,11 @@ int syncStart(const char *path, SyncBeforeCheckout before, SyncEvent event) {
   return 1;
 }
 int syncReady(void) { return networkState == 2; }
+int syncBusy(void) { return peer != NO_SOCKET; }
 const char *syncAddress(void) { return address; }
 const char *syncStatus(void) { return statusText; }
 static void respond(int code, const char *text, const unsigned char *body,
-                    unsigned length, const char *token) {
+                    unsigned length, const char *token, uint32_t storedCRC) {
   responseLength = length;
   responseBody = body;
   sentHeader = sentBody = 0;
@@ -210,18 +211,18 @@ static void respond(int code, const char *text, const unsigned char *body,
       response, sizeof(response),
       "HTTP/1.1 %d %s\r\nContent-Length: %u\r\nContent-Type: %s\r\nConnection: "
       "close\r\nCache-Control: no-store\r\nX-Walker-Session: "
-      "%s\r\nX-Walker-CRC32: %08lX\r\n\r\n",
+      "%s\r\nX-Walker-CRC32: %08lX\r\nX-Walker-Stored-CRC32: %08lX\r\n\r\n",
       code, text, length,
       code == 200 && length == WALKER_FILE_SIZE ? "application/octet-stream"
                                                 : "text/plain",
       token ? token : "",
       (unsigned long)(length == WALKER_FILE_SIZE ? walkerCrc(body, length)
-                                                 : 0));
+                                                 : 0), (unsigned long)storedCRC);
 }
 static void errorResponse(int code, const char *why) {
   snprintf(statusText, sizeof(statusText), "%s", why);
   respond(code, "Error", (const unsigned char *)statusText,
-          (unsigned)strlen(statusText), 0);
+          (unsigned)strlen(statusText), 0, 0);
 }
 static int header(const char *name, char *out, unsigned capacity) {
   unsigned n = (unsigned)strlen(name);
@@ -262,6 +263,10 @@ static void handle(void) {
     errorResponse(400, "A 16-byte phone session token is required.");
     return;
   }
+  char trainer[64];
+  if(header("X-Walker-Trainer",trainer,sizeof(trainer)) && !leaseMatchesTrainer(selected,trainer)) {
+    errorResponse(409,"Trainer name or Trainer ID does not match this phone profile. Select the matching walker.");return;
+  }
   if (post) {
     if (!header("Content-Length", length, sizeof(length)) ||
         strtoul(length, 0, 10) != WALKER_FILE_SIZE) {
@@ -272,8 +277,9 @@ static void handle(void) {
     if (received < headLength + bodyLength)
       return;
     char error[160];
-    if (!leaseReturn(selected, token, request + headLength, error,
-                     sizeof(error))) {
+    const uint32_t returnedCRC=walkerCrc(request+headLength,WALKER_FILE_SIZE);
+    int returned=leaseReturn(selected,token,request+headLength,error,sizeof(error));
+    if (!returned) {
       WalkerLease active;
       int state = leaseInspect(selected, &active);
       int same = state == 1 && !memcmp(active.token, token, 16);
@@ -282,12 +288,13 @@ static void handle(void) {
       errorResponse(revoked ? 410 : (same || state < 0 ? 503 : 409), error);
       return;
     }
-    if (onEvent)
+    if (returned==1 && onEvent)
       onEvent(2);
-    snprintf(statusText, sizeof(statusText),
-             "Returned. Console walker unlocked.");
-    respond(200, "OK", (unsigned char *)statusText,
-            (unsigned)strlen(statusText), session);
+    snprintf(statusText,sizeof(statusText),"%s",returned==1?
+             "Returned. Console walker unlocked.":"Return already acknowledged. Current walker unchanged.");
+    snprintf(returnReceipt,sizeof(returnReceipt),"PWRETURN1 %s %08lX\n",session,(unsigned long)returnedCRC);
+    respond(200, "OK", (unsigned char *)returnReceipt,
+            (unsigned)strlen(returnReceipt), session, returnedCRC);
   } else {
     if (leaseSessionRevoked(selected, token)) {
       errorResponse(
@@ -315,8 +322,8 @@ static void handle(void) {
     if (onEvent)
       onEvent(1);
     snprintf(statusText, sizeof(statusText),
-             "On Android. Console access is locked.");
-    respond(200, "OK", snapshot, WALKER_FILE_SIZE, session);
+             "On phone. Console access is locked.");
+    respond(200, "OK", snapshot, WALKER_FILE_SIZE, session, 0);
   }
 }
 void syncPoll(void) {
@@ -457,7 +464,7 @@ void syncPoll(void) {
       activity = time(0);
       if (responseBody == snapshot)
         snprintf(statusText, sizeof(statusText),
-                 "Sending to Android: %u / %u bytes.", sentBody,
+                 "Sending to phone: %u / %u bytes.", sentBody,
                  responseLength);
     }
   }

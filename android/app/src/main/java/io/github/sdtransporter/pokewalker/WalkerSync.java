@@ -13,16 +13,20 @@ final class WalkerSync {
         Rejected(int status,String message){super(message);this.status=status;}
     }
     static byte[] exchange(boolean returning,String host,String session,byte[] payload,Progress progress)throws IOException {
+        return exchange(returning,host,session,payload,"",progress);
+    }
+    static byte[] exchange(boolean returning,String host,String session,byte[] payload,String trainerKey,Progress progress)throws IOException {
         IOException last=null;
         for(int attempt=1;attempt<=3;attempt++){
             HttpURLConnection connection=null;
             try {
-                progress.update(returning?"Returning walker…":"Receiving walker…");
+                progress.update(returning?"Returning Pokémon…":"Receiving Pokémon…");
                 String endpoint=host.contains(":")?host:host+":30820";
                 connection=(HttpURLConnection)new URL("http://"+endpoint+"/walker").openConnection();
                 connection.setConnectTimeout(10000);connection.setReadTimeout(30000);connection.setInstanceFollowRedirects(false);
                 connection.setRequestProperty("Connection","close");connection.setRequestProperty("Accept-Encoding","identity");
                 connection.setRequestProperty("X-Walker-Session",session);
+                if(!trainerKey.isEmpty()){if(!trainerKey.matches("[a-f0-9]{36}"))throw new IOException("Invalid trainer binding");connection.setRequestProperty("X-Walker-Trainer",trainerKey);}
                 if(returning){
                     connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setFixedLengthStreamingMode(payload.length);
                     try(OutputStream out=connection.getOutputStream()){for(int n=0;n<payload.length;n+=4096)out.write(payload,n,Math.min(4096,payload.length-n));}
@@ -44,6 +48,13 @@ final class WalkerSync {
                 if(!returning){
                     CRC32 crc=new CRC32();crc.update(body);String expected=connection.getHeaderField("X-Walker-CRC32");
                     if(expected==null || !expected.equalsIgnoreCase(String.format(Locale.ROOT,"%08x",crc.getValue())))throw new IOException("Walker checksum does not match; update the console app and retry");
+                } else {
+                    CRC32 crc=new CRC32();crc.update(payload);String expected=String.format(Locale.ROOT,"%08x",crc.getValue());
+                    String stored=connection.getHeaderField("X-Walker-Stored-CRC32");
+                    String receipt=new String(body,java.nio.charset.StandardCharsets.US_ASCII).trim();
+                    boolean confirmed=stored!=null&&stored.trim().equalsIgnoreCase(expected);
+                    confirmed|=receipt.equalsIgnoreCase("PWRETURN1 "+session+" "+expected);
+                    if(!confirmed)throw new IOException("Return confirmation "+(stored==null?"has no saved checksum":"checksum did not match")+". Keep the console on Phone sync and retry; the phone copy remains locked");
                 }
                 return body;
             } catch(Rejected rejected){throw rejected;}

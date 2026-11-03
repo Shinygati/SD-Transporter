@@ -139,3 +139,18 @@ signing.properties
 
 # Local DS Lite access-point profile (contains the WEP key)
 **/data/pokewalker/wifi.bin*
+
+# iOS compiled products, signing and personal Xcode state
+*.ipa
+*.xcarchive/
+*.dSYM/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.mobileprovision
+*.provisionprofile
+*.cer
+*.p8
+
+# Interrupted-save rollback contains private walker data.
+*.[wW][aA][lL][kK][eE][rR]*

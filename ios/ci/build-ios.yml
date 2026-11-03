@@ -1,0 +1,23 @@
+# Optional template: copy to .github/workflows/build-ios.yml to enable.
+# No push trigger, signing secret or release publication.
+name: Build unsigned iPhone test app
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show selected SDK
+        run: xcodebuild -version
+      - name: Build unsigned IPA
+        run: sh ios/tools/build-ipa.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pokewalker-iPhone-unsigned
+          path: ios/build-local/Pokewalker-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

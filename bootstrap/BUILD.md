@@ -18,7 +18,7 @@ export PATH="$COMPILER_DIR/bin:$DEVKITPRO/tools/bin:$PATH"
 make -C retail -j4 \
   DEVKITARM="$PWD/portable-ds-rules" \
   LEGACY_DEVKITARM="$COMPILER_DIR" LEGACY_LIBNDS="$SDK_DIR" LIBDIRS="$SDK_DIR" \
-  PYTHON=python3 GIT_VER=walker-phone-sync LZSS="$PWD/lzss" all
+  PYTHON=python3 GIT_VER=sdlang2 LZSS="$PWD/lzss" all
 ```
 
 On Windows use native/forward-slash paths accepted by the installed make/compiler tools if MSYS path conversion is disabled, and `lzss.exe` / `python` where appropriate. `SHELL=/path/to/sh.exe` can select the POSIX shell for a native Windows GNU Make. Output: `retail/bin/nds-bootstrap.nds`; install as `_nds/nds-bootstrap-nightly.nds` and choose Nightly in TWiLight Menu++.
@@ -50,5 +50,10 @@ paths and Linux devkitPro paths are supported. These freestanding generators do
 not require a retail ROM or Download Play executable. The output headers are
 written under `bootstrap/retail/common/include/`. Compiler versions can change
 payload bytes, relocation offsets and layout metadata, so keep regenerated
-headers together and rebuild bootstrap after regeneration. The archived working
-build and existing validated headers have not been replaced by this packaging step.
+headers together and rebuild bootstrap after regeneration. The included Gen V adapter/profile headers were regenerated together with GCC 14.2 for the regional source classifier update. The Slot-2 header uses GCC 16.1. Keep each generated payload and its corresponding hook metadata together.
+
+## Regional received clients and recovery verification
+
+The adapter has 28 verified English/French/German/Italian/Spanish/Japanese/Korean BW/B2W2 layouts, including both received variants. Keep `gen5_profile_codec.py` beside `build_gen5_sd_adapter.py`; it losslessly emits compact profile tables for the ARM7 memory budget. Regenerate the adapter, profile and identity headers together with GCC 14.2. Native client offsets and CRC checks remain profile-specific; modified clients are refused. No retail executable is needed to regenerate these original payloads.
+
+The loader creates immutable verified pre-launch `.walker` snapshots under adjacent `transfers/backups/`. Existing phone locks still prevent HGSS from opening a checked-out walker. The NTR ARM7 walker writer verifies sector writes through checked I/O and retains failed sectors for retry. These are recovery safeguards, not a complete power-loss transaction across the DS save and EEPROM.

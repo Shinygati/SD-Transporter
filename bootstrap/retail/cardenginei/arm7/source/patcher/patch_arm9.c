@@ -802,7 +802,7 @@ static void randomPatch5Second(const tNDSHeader* ndsHeader, const module_params_
 	ce9->patches->needFlushDCCache = (patchMpuRegion == 1);
 }*/
 
-u32 patchCardNdsArm9(cardengineArm9* ce9, const tNDSHeader* ndsHeader, const module_params_t* moduleParams, u32 patchMpuRegion, const bool buttonsRemapped) {
+__attribute__((optimize("Os"))) u32 patchCardNdsArm9(cardengineArm9* ce9, const tNDSHeader* ndsHeader, const module_params_t* moduleParams, u32 patchMpuRegion, const bool buttonsRemapped) {
 
 	bool usesThumb;
 	//bool slot2usesThumb = false;

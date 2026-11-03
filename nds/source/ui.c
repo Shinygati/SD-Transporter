@@ -131,7 +131,7 @@ void uiTop(const UIState *s) {
   key.phoneLocked = s->phoneLocked;
   key.frame = (s->frame / 24) & 1;
   key.battle = s->battle;
-  key.screen = s->screen == UI_BATTLE ? UI_BATTLE : 0;
+  key.screen = s->screen == UI_BATTLE || s->screen == UI_LIST ? s->screen : 0;
   snprintf(key.filename, sizeof(key.filename), "%s", s->filename);
   if (valid[0] && !memcmp(&key, &cached[0], sizeof(key)))
     return;
@@ -139,12 +139,24 @@ void uiTop(const UIState *s) {
   valid[0] = 1;
   ndsUiBegin(0, BG);
   text(8, 5, TEAL, "NDS POKEWALKER", 30);
+  if(s->screen==UI_LIST && s->loaded) {
+    text(8,30,INK,s->filename,30);
+    text(8,57,TEAL,"TRAINER",30);
+    text(8,75,INK,s->info.registered&&s->info.trainer[0]?s->info.trainer:"Unavailable",30);
+    if(s->info.registered)fmt(8,100,GOLD,30,"Trainer ID: %05lu",(unsigned long)s->info.trainerId);
+    else text(8,100,GOLD,"Trainer ID unavailable",30);
+    text(8,129,INK,s->info.hasPokemon?speciesName(s->info.species):"No companion",30);
+    text(8,158,MUTED,"A Open selected walker",30);return;
+  }
   if (!s->loaded || !s->info.hasPokemon) {
     ndsUiRect(60, 38, 136, 99, PANEL);
     text(88, 80, GOLD, "NO PARTNER", 13);
+    if (s->loaded && s->info.registered) {
+      fmt(8, 112, TEAL, 30, "%lu steps  %u watts", (unsigned long)(s->info.strollSteps+s->pending),s->info.watts);
+    }
     wrap(16, 149, INK,
-         s->phoneLocked ? "Walker is checked out to Android."
-                        : "Choose an active walker below.",
+         s->phoneLocked ? "Walker is checked out to a phone."
+                        : s->loaded && s->info.registered ? "Keep walking. A wild Pokémon may join." : "Choose an active walker below.",
          28, 2);
     return;
   }
@@ -247,8 +259,38 @@ void uiBottom(const UIState *s) {
     }
     if (s->scanLimited)
       text(8, 169, GOLD, "Search limit reached", 30);
-    footer(s->wifiAvailable ? "A Open X Scan Y Wi-Fi START Exit"
-                            : "A Open X Scan L/R Pg START Exit");
+    footer("A Open SELECT Recovery X Scan");
+    return;
+  }
+  if(s->screen==UI_RESTORE_BACKUP) {
+    header("Restore selected backup?");
+    wrap(8,36,INK,"Current progress is backed up. Phone handoff is revoked. Old data may duplicate Pokemon already received in HGSS.",30,6);
+    wrap(8,126,GOLD,s->backupName,30,3);
+    footer("A Restore backup B Cancel");return;
+  }
+  if(s->screen==UI_RECOVER_SAVE) {
+    header("Recover interrupted save?");
+    wrap(8,34,INK,"Final walker missing. Choose a file. Originals are kept.",30,3);
+    wrap(8,80,GOLD,s->backupName,30,3);
+    wrap(8,128,INK,s->backupDetail,30,3);
+    footer("L/R File A Recover B Cancel");return;
+  }
+  if(s->screen==UI_BACKUPS || s->screen==UI_BACKUP_DELETE || s->screen==UI_DELETE_ACTIVE) {
+    int active=s->screen==UI_DELETE_ACTIVE,confirm=s->screen!=UI_BACKUPS;
+    header(active?"Delete active walker?":confirm?"Delete recovery copy?":"Recovery copies");
+    if(confirm) {
+      wrap(8,40,INK,active?"Delete the active walker? A recovery copy is kept first. Any phone handoff on this console is revoked.":"Permanently delete this snapshot? Active data and ownership records are kept.",30,5);
+      wrap(8,118,GOLD,active?s->backupWalker:s->backupName,30,3);
+      footer("A Confirm delete B Cancel");
+    } else {
+      fmt(8,32,TEAL,30,"%d / %d copies%s",s->backupCount?s->backupIndex+1:0,s->backupCount,s->backupLimited?" (first 128)":"");
+      wrap(8,48,INK,s->backupCount?s->backupName:"No recovery snapshots yet.",30,2);
+      wrap(8,84,MUTED,s->backupDetail,30,2);
+      text(8,110,TEAL,"START Restore SELECT Missing",30);
+        panel(8,124,240,24,0);text(16,132,INK,"A Delete selected backup",28);
+      panel(8,152,240,24,0);text(16,160,GOLD,"X Delete active walker",28);
+      footer("L/R Copy Y Walker B Back");
+    }
     return;
   }
   if (s->screen == UI_SYNC) {
@@ -262,19 +304,19 @@ void uiBottom(const UIState *s) {
   }
   if (s->screen == UI_LOCKED || s->screen == UI_FORCE) {
     int force = s->screen == UI_FORCE;
-    header(force ? "Force unlock?" : "On Android");
+    header(force ? "Force unlock?" : "On phone");
     wrap(
         8, 40, INK,
         force
-            ? "Restore the console snapshot? Phone progress will be discarded. "
-              "The old Android session cannot sync back until a fresh handoff."
-            : "This walker is locked while Android owns it. Return it over "
+            ? "Restore the console snapshot? Recovery copies are kept. "
+              "The old phone session cannot sync back until a fresh handoff."
+            : "This walker is locked while a phone owns it. Return it over "
               "Wi-Fi, or recover the local snapshot if the phone is "
               "unavailable.",
         30, 11);
     footer(force              ? "A Restore and revoke B Cancel"
-           : s->wifiAvailable ? "A Sync X Recover Y Wi-Fi B Back"
-                              : "A Sync X Recover B Back");
+           : s->wifiAvailable ? "A Sync X Recover R Backups"
+                              : "A Sync X Recover R Backups");
     return;
   }
   if (s->screen == UI_WIFI) {
@@ -347,7 +389,7 @@ void uiBottom(const UIState *s) {
     return;
   }
   const char *title = s->screen == UI_HOME       ? "Adventure menu"
-                      : s->screen == UI_SETTINGS ? "Settings"
+                      : s->screen == UI_SETTINGS ? "Settings 1.4-test"
                       : s->screen == UI_RADAR    ? "Poke Radar"
                       : s->screen == UI_DOWSE    ? "Dowsing"
                       : s->screen == UI_BATTLE   ? "Choose a move"
@@ -393,7 +435,8 @@ void uiBottom(const UIState *s) {
                                      : "Off");
       text(200, y + 8, TEAL, value, 5);
     }
-    wrap(8, 159, TEAL, s->toast, 30, 1);
+    panel(8,156,240,20,0);text(16,162,TEAL,"X Recovery copies / delete",28);
+
   } else if (s->screen == UI_RADAR || s->screen == UI_DOWSE) {
     int radar = s->screen == UI_RADAR, cols = radar ? 2 : 3;
     for (int i = 0; i < cols * 2; i++) {
@@ -429,9 +472,7 @@ void uiBottom(const UIState *s) {
       if (replace)
         panel(8, y, 240, 28, i == s->selection);
       if (replace && s->replaceKind)
-        fmt(16, y + 8, INK, 28, "%d. %s%u", i + 1,
-            id && id != 65535 ? "Item #" : "Empty ",
-            id && id != 65535 ? id : 0);
+        fmt(16, y + 8, INK, 28, "%d. %s", i + 1, itemName(id));
       else
         fmt(16, y + (replace ? 8 : 0), INK, 28, "%d. %s", i + 1,
             id && id != 65535 ? speciesName(id) : "Empty");
@@ -441,7 +482,7 @@ void uiBottom(const UIState *s) {
       for (int i = 0; i < 3; i++) {
         unsigned id = walkerItemId(s->ee, i);
         if (id && id != 65535)
-          fmt(16, 118 + i * 16, INK, 28, "%d. Item #%u", i + 1, id);
+          fmt(16, 118 + i * 16, INK, 28, "%d. %s", i + 1, itemName(id));
         else
           fmt(16, 118 + i * 16, MUTED, 28, "%d. Empty", i + 1);
       }

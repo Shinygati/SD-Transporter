@@ -62,6 +62,7 @@ extern unsigned int gen5RomCluster;
 #include "my_fat.h"
 #include "debug_file.h"
 #include "nds_header.h"
+#define GEN5_RECOGNIZER_ONLY
 #include "transfer_probe.h"
 #include "module_params.h"
 #include "decompress.h"
@@ -1617,7 +1618,8 @@ bool buttonsRemapped(void) {
 	return false;
 }
 
-int arm7_main(void) {
+/* Boot-only control flow: leave enough VRAM below the loader stacks. */
+__attribute__((optimize("Os"))) int arm7_main(void) {
 	nocashMessage("bootloader");
 
 	initMBK();

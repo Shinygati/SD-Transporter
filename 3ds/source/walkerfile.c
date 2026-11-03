@@ -109,8 +109,19 @@ unsigned walkerItemId(const uint8_t *ee, unsigned slot) {
 unsigned walkerRoutePokemonId(const uint8_t *ee, unsigned i) {
     return i < 3 ? le16(ee + WALKER_ROUTE + 0x52 + i * 16) : 0;
 }
+unsigned walkerRouteItemId(const uint8_t *ee, unsigned i) {
+    return i < 10 ? le16(ee + WALKER_ROUTE + 0x8c + i * 2) : 0;
+}
 static int validSpecies(unsigned id) { return id > 0 && id <= 493; }
 static int validItem(unsigned id) { return id > 0 && id < 537; }
+static int walkable(const uint8_t *ee, const WalkerInfo *i) {
+    if (!i->setUp || !i->registered) return 0;
+    if (i->hasPokemon) return 1;
+    const uint8_t *id = reliable(ee, ID1, ID2, 104);
+    const uint8_t *candidate = ee + WALKER_ROUTE + 0x52 + 2 * 16;
+    return id && !(id[0x5b] & 2) && validSpecies(le16(candidate)) &&
+           candidate[12] >= 1 && candidate[12] <= 100;
+}
 int walkerRead(const uint8_t *ee, WalkerInfo *i) {
     memset(i, 0, sizeof(*i));
     i->setUp = !memcmp(ee, "nintendo", 8);
@@ -126,6 +137,7 @@ int walkerRead(const uint8_t *ee, WalkerInfo *i) {
     i->registered = id[0x5b] & 1;
     i->hasPokemon = (id[0x5b] & 2) != 0;
     text(id + 0x48, 8, i->trainer);
+    i->trainerId = le16(id + 12);
     i->totalSteps = be32(hd);
     i->elapsedHours = be32(hd + 4);
     i->watts = hd[14] * 256 + hd[15];
@@ -159,10 +171,26 @@ int walkerRead(const uint8_t *ee, WalkerInfo *i) {
         i->lastEvent = meta(ee, M_KIND);
         i->lastEventValue = meta(ee, M_VALUE);
         i->eventCount = meta(ee, M_COUNT);
-        if (i->hasPokemon && meta(ee, M_STEPS_MARK) == 0x53544550u)
+        if (walkable(ee, i) && meta(ee, M_STEPS_MARK) == 0x53544550u)
             i->strollSteps = meta(ee, M_STEPS);
     }
     return 1;
+}
+int walkerTrainerKey(const uint8_t *ee,char out[37]) {
+    WalkerInfo info;out[0]=0;
+    if(!walkerRead(ee,&info)||!info.registered)return 0;
+    const uint8_t *id=reliable(ee,ID1,ID2,104);if(!id)return 0;
+    uint8_t key[18];key[0]=id[12];key[1]=id[13];int ended=0;
+    for(unsigned n=0;n<8;n++) {
+        unsigned value=le16(id+0x48+n*2);if(value==0xffff)ended=1;
+        key[2+n*2]=ended?0xff:(uint8_t)value;key[3+n*2]=ended?0xff:(uint8_t)(value>>8);
+    }
+    static const char hex[]="0123456789abcdef";
+    for(unsigned n=0;n<18;n++){out[n*2]=hex[key[n]>>4];out[n*2+1]=hex[key[n]&15];}out[36]=0;return 1;
+}
+int walkerCanWalk(const uint8_t *ee) {
+    WalkerInfo i;
+    return walkerRead(ee, &i) && walkable(ee, &i);
 }
 static void initmeta(uint8_t *ee, uint32_t start, uint32_t stamp, unsigned rate) {
     memset(ee + META, 0, MSIZE);
@@ -337,11 +365,18 @@ static void join(uint8_t *ee, uint32_t now) {
     memcpy(id + 10, id + 8, 2);
     mirror(ee, ID1, ID2, id, 104);
     memcpy(ee + WALKER_ROUTE, ee + WALKER_ROUTE + 0x52 + 32, 16);
+    ee[WALKER_ROUTE + 13] &= 0x7f; /* Original generated-companion appearance bit. */
     memset(ee + WALKER_ROUTE + 16, 0, 22);
     ee[WALKER_ROUTE + 0x26] = 70;
     memmove(ee + 0x91be, ee + 0x9a7e + 768, 384);
     memmove(ee + 0x933e, ee + 0x9efe, 1536);
     memmove(ee + 0x993e, ee + 0xa4fe + 640, 320);
+    uint8_t health[24];
+    memcpy(health, reliable(ee, HD1, HD2, 24), sizeof(health));
+    health[16] = health[17] = 0; /* New companion's elapsed minutes. */
+    health[19] = 0;
+    mirror(ee, HD1, HD2, health, sizeof(health));
+    for (unsigned n = 0; n < 23; n++) ee[0xcf0c + n * 136 + 132] = 0;
     diary(ee, now, 23, 2, 0);
     event(ee, 2, le16(ee + WALKER_ROUTE));
 }
@@ -416,7 +451,7 @@ static void rolloverDay(uint8_t *ee, uint32_t day) {
  * within the same app session is counted by the next walkerAdvance call. */
 int walkerResume(uint8_t *ee, uint32_t now, uint32_t rate) {
     WalkerInfo i;
-    if (!walkerRead(ee, &i) || !i.setUp || !i.registered || !i.hasPokemon)
+    if (!walkerRead(ee, &i) || !walkable(ee, &i))
         return 0;
     if (!rate || rate > 86400)
         rate = WALKER_DEFAULT_SECONDS_PER_STEP;
@@ -494,7 +529,7 @@ static uint32_t span(uint8_t *ee, uint32_t target, unsigned rate) {
 int walkerAdvance(uint8_t *ee, uint32_t now, uint32_t rate, WalkerReport *r) {
     memset(r, 0, sizeof(*r));
     WalkerInfo i;
-    if (!walkerRead(ee, &i) || !i.setUp || !i.registered || !i.hasPokemon)
+    if (!walkerRead(ee, &i) || !walkable(ee, &i))
         return 0;
     if (!rate || rate > 86400)
         rate = WALKER_DEFAULT_SECONDS_PER_STEP;
@@ -561,7 +596,7 @@ int walkerAdvance(uint8_t *ee, uint32_t now, uint32_t rate, WalkerReport *r) {
 int walkerAddSteps(uint8_t *ee, uint32_t now, uint32_t steps, WalkerReport *r) {
     memset(r, 0, sizeof(*r));
     WalkerInfo i;
-    if (!walkerRead(ee, &i) || !i.registered || !i.hasPokemon)
+    if (!walkerRead(ee, &i) || !walkable(ee, &i))
         return 0;
     if (!i.hasClock || !metaValid(ee) || meta(ee, M_START) != i.walkStart)
         if (!walkerResume(ee, now, WALKER_DEFAULT_SECONDS_PER_STEP))
@@ -614,7 +649,7 @@ uint32_t walkerPendingSteps(const uint8_t *ee, uint32_t now, uint32_t rate) {
     WalkerInfo i;
     if (!rate)
         rate = WALKER_DEFAULT_SECONDS_PER_STEP;
-    return walkerRead(ee, &i) && i.registered && i.hasPokemon && i.hasClock && now > i.lastCredited
+    return walkerRead(ee, &i) && walkable(ee, &i) && i.hasClock && now > i.lastCredited
                ? (now - i.lastCredited) / rate
                : 0;
 }

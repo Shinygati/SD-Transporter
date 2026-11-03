@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 static unsigned calls, deletions, opens, closes;
-static Result firstError, deleteError;
+static Result firstError, deleteError, moveError, publishError;
 FS_Path fsMakePath(int type, const void *data) {
     FS_Path p = {type, data};
     return p;
@@ -38,7 +38,7 @@ Result FSUSER_RenameFile(FS_Archive a, FS_Path from, FS_Archive b, FS_Path to) {
     assert(s != d && s[0] == '/' && d[0] == '/');
     assert(s[1] == 's' && d[1] == 's');
     calls++;
-    return calls == 1 ? firstError : 0;
+    return calls == 1 ? firstError : calls == 2 ? moveError : calls == 3 ? publishError : 0;
 }
 Result FSUSER_DeleteFile(FS_Archive a, FS_Path to) {
     (void)a;
@@ -49,7 +49,7 @@ Result FSUSER_DeleteFile(FS_Archive a, FS_Path to) {
 static void reset(Result first, Result removal) {
     calls = deletions = opens = closes = 0;
     firstError = first;
-    deleteError = removal;
+    deleteError = 0;moveError=removal;publishError=0;
 }
 int main(void) {
     uint32_t native;
@@ -60,16 +60,18 @@ int main(void) {
     assert(calls == 1 && deletions == 0 && opens == closes);
     reset((Result)0xC82044BE, 0);
     assert(sdRenameReplace(s, d, &native) == 0);
-    assert(calls == 2 && deletions == 1 && !native && opens == closes);
+    assert(calls == 3 && deletions == 1 && !native && opens == closes);
     reset((Result)0xC80003FC, 0);
     assert(sdRenameReplace(s, d, &native) == 0);
-    assert(calls == 2 && deletions == 1);
+    assert(calls == 3 && deletions == 1);
     reset((Result)0xC8804478, 0);
     assert(sdRenameReplace(s, d, &native) == -1);
     assert(errno == ENOENT && native == 0xC8804478u && deletions == 0 && opens == closes);
     reset((Result)0xC82044BE, (Result)0xC80003EA);
     assert(sdRenameReplace(s, d, &native) == -1);
-    assert(errno == EACCES && calls == 1 && deletions == 1 && opens == closes);
+    assert(errno == EACCES && calls == 2 && deletions == 0 && opens == closes);
+    reset((Result)0xC82044BE,0);publishError=(Result)0xC80003EA;
+    assert(sdRenameReplace(s,d,&native)==-1 && calls==4 && deletions==0);
     reset(0, 0);
     assert(sdRenameReplace("relative", d, &native) == -1 && errno == EINVAL);
     assert(opens == 0);

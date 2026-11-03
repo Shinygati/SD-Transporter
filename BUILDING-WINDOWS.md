@@ -205,5 +205,12 @@ paths and Linux devkitPro paths are supported. These freestanding generators do
 not require a retail ROM or Download Play executable. The output headers are
 written under `bootstrap/retail/common/include/`. Compiler versions can change
 payload bytes, relocation offsets and layout metadata, so keep regenerated
-headers together and rebuild bootstrap after regeneration. The archived working
-build and existing validated headers have not been replaced by this packaging step.
+headers together and rebuild bootstrap after regeneration. The included Gen V adapter/profile headers were regenerated together with GCC 14.2 for the regional source classifier update. The Slot-2 header uses GCC 16.1. Keep each generated payload and its corresponding hook metadata together.
+
+## iPhone source and Windows installation
+
+The `ios/` target requires macOS and Xcode to compile. Windows cannot compile this native iOS target using the installed devkitPro/Android tools. Keep `shared/` next to `ios/`, open `ios/Pokewalker.xcodeproj` on macOS, or run `sh ios/tools/build-ipa.sh` there to generate an unsigned IPA. The optional `ios/ci/build-ios.yml` template enables a manual macOS CI build only if the owner installs it as a GitHub workflow; no remote workflow has been enabled or run.
+
+Windows users can sign/install the resulting IPA with AltServer/AltStore Classic. Follow [official Windows setup](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows). Free-account apps generally need refreshing every seven days. Return/export an active walker before uninstalling or changing signing identity. See [ios/README.md](ios/README.md) for dependencies, limitations and pending device checks. No compiled iOS app is included in this snapshot.
+
+For an Android production AAB, see [android/play-store/RELEASE-BUILD.md](android/play-store/RELEASE-BUILD.md). A private test APK is not a signed Play release bundle; production policy requirements remain in [the readiness report](android/play-store/README.md).

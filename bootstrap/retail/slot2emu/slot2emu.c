@@ -386,6 +386,52 @@ static int distinct(u32 a, u32 b, u32 c, u32 d, u32 e) {
 	       c != d && c != e && d != e;
 }
 
+/* The abort path disables the MPU and both caches. Calling backupRead for
+ * every byte still fetches a large amount of uncached code, even when the
+ * SDK's loop has been batched into one abort. Normal array-mode reads can
+ * instead copy directly from the mirror. Keep chip-ID reads on the bus path.
+ * Return only the contiguous span so SRAM wrapping and bank limits retain
+ * their normal bus semantics. */
+static u32 readSpan(Slot2EmuControl *c, u32 address, u32 *offset) {
+	if (c->type == SLOT2EMU_TYPE_SRAM) {
+		if (c->flashSize != 0x8000) return 0;
+		*offset = address & (c->flashSize - 1);
+		return c->flashSize - *offset;
+	}
+	if (c->flashMode & MODE_ID) return 0;
+	if (c->flashSize != 0x10000 && c->flashSize != 0x20000) return 0;
+	*offset = c->flashBank * 0x10000 + (address & 0xFFFF);
+	return *offset < c->flashSize ? c->flashSize - *offset : 0;
+}
+
+static void copyMirror(u32 destination, u32 source, u32 length) {
+	/* Align both sides together; differing alignments use byte copies. */
+	if (((destination ^ source) & 3) == 0) {
+		while (length && (source & 3)) {
+			*(volatile u8 *)destination++ = *(volatile const u8 *)source++;
+			length--;
+		}
+#ifndef SLOT2EMU_HOST
+		while (length >= 32) {
+			__asm__ volatile(
+				"ldmia %0!, {r2-r9}\n\t"
+				"stmia %1!, {r2-r9}"
+				: "+r"(source), "+r"(destination)
+				:
+				: "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "memory");
+			length -= 32;
+		}
+#endif
+		while (length >= 4) {
+			*(volatile u32 *)destination = *(volatile const u32 *)source;
+			destination += 4;
+			source += 4;
+			length -= 4;
+		}
+	}
+	while (length--) *(volatile u8 *)destination++ = *(volatile const u8 *)source++;
+}
+
 /* CTRDGi_ReadAgbFlashCore:
  *   L: ldrb rd, [rn], #1 / cmp rc, #0 / sub rc, rc, #1 / strb rd, [rm], #1 / bne L */
 static u32 bulkRead(Slot2EmuControl *c, u32 *r, u32 pc, u32 i0) {
@@ -403,12 +449,21 @@ static u32 bulkRead(Slot2EmuControl *c, u32 *r, u32 pc, u32 i0) {
 	if (n > BULK_MAX) n = BULK_MAX;
 	const u32 src = r[rn], dst = r[rm];
 	if (!n || src < SRAM_START || src + n > SRAM_END || !ramRange(dst, n)) return 0;
-	dcacheRange(dst, n, 1);
-	volatile u8 *out = (volatile u8 *)dst;
-	u32 v = 0;
-	for (u32 k = 0; k < n; k++) {
-		v = backupRead(c, src + k);
-		out[k] = (u8)v;
+	u32 offset, span = readSpan(c, src, &offset), v;
+	if (span && dst < c->mirror + offset + n && c->mirror + offset < dst + n) span = 0;
+	if (span) {
+		if (n > span) n = span;
+		dcacheRange(dst, n, 1);
+		copyMirror(dst, c->mirror + offset, n);
+		v = *(volatile u8 *)(dst + n - 1);
+	} else {
+		dcacheRange(dst, n, 1);
+		volatile u8 *out = (volatile u8 *)dst;
+		v = 0;
+		for (u32 k = 0; k < n; k++) {
+			v = backupRead(c, src + k);
+			out[k] = (u8)v;
+		}
 	}
 	r[rn] = src + n;
 	r[rm] = dst + n;

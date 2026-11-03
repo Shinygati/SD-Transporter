@@ -7,6 +7,8 @@
  * is told the cartridge is present (the ARM7 has no MPU, so it cannot be
  * trapped like the ARM9 and would otherwise see an empty slot).
  */
+/* Boot-only setup: optimize for size to preserve the DSi loader stack area. */
+#pragma GCC optimize("Os")
 #include <nds/ndstypes.h>
 #include "my_fat.h"
 #include "tonccpy.h"

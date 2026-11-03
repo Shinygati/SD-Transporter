@@ -101,3 +101,21 @@ MSVC supports the checks with `/std:c11`. Optional `tools/ui_preview.c` emits SV
 Part of **SD Transporter**. Thanks to [TWiLight Menu++](https://github.com/DS-Homebrew/TWiLightMenu) and [nds-bootstrap](https://github.com/DS-Homebrew/nds-bootstrap) for the projects underlying SD Transporter, and devkitPro, libctru, Citro2D and Citro3D for the 3DS development libraries.
 
 Original app code is GPL-3.0-or-later; see `LICENSE`. Serialized layouts and mechanics were checked against Dmitry Grinberg's research and the CC0 `lumirth/pw` reconstruction; see `REFERENCES.md`. Their research source trees and the retail firmware are not bundled. This is unofficial homebrew.
+
+## Registered empty walkers and confirmed returns
+
+Registered empty walkers with valid uploaded joining-course data may now walk and gain the original designated course companion. Blank/unregistered or malformed files remain blocked, and joining cannot replace a companion already aboard. Console/phone handoffs permit the expected empty-to-generated-companion transition while retaining trainer, device, course and session checks. The companion event scheduler is an app implementation; original firmware timing is not claimed.
+
+Update the phone and console companions together. The phone requires either `X-Walker-Stored-CRC32` or a structured session-bound `PWRETURN1` receipt matching its returned EEPROM before clearing active ownership; until confirmation succeeds the phone keeps a frozen pending-return copy. Verified immutable recovery exports are retained. DS Lite Wi-Fi scanning cannot accept a handoff, and active/phone-owned walkers block Wi-Fi reconfiguration.
+
+## Recovery and save integrity (1.3 test)
+
+Confirmed handoffs remove the sender's active Pokémon. Unconfirmed copies remain locked; history snapshots never load automatically. Recovery snapshots are limited to **10 per walker**, oldest first after a newly written snapshot is verified. Console files are grouped by original walker path; phones group by the stable device/trainer identity rather than the handoff token. Ownership receipts and in-flight `.phone` snapshots are not part of the history cap.
+
+3DS/NDS Settings **X** opens the recovery manager. The file list **SELECT** finds histories even when the active file is missing. **Y** changes walker history, **L/R** changes copy, **A** deletes a snapshot after confirmation and **X** deletes the active file after preserving a verified snapshot. **SELECT** inside Recovery offers explicit missing-file recovery from verified `.tmp`, `.replace-old`, `.bak` or `.bak.tmp` candidates. Choose with **L/R**, inspect trainer/pack details and press **A** to restore; candidates are kept, and no phone lock is bypassed. Mobile Settings offers export/delete histories and confirmed active deletion.
+
+Console saves reread the final filename after replacement. FAT/3DS replacement keeps an old-file rollback instead of deleting the target first. Catches and item finds get their own verified recovery snapshot; success is shown only after the active save succeeds. Mobile reward saves follow the same verification rule. Trainer previews show the verified HGSS trainer name and public five-digit Trainer ID where available.
+
+Fault checks cover failed and silently dropped writes, rollback failures, explicit backup restoration and journal replay. Use at your own risk and keep independent backups. iPhone source changes have host C and Swift syntax checks only, not an Apple SDK build.
+
+Companion 1.4 adds named phone profiles with all-active walking and trainer-name/public-ID binding. Console Recovery uses START to restore a selected snapshot, and SELECT for interrupted-save candidates. Final-file existence/content is rechecked before return acknowledgement. See the root howtouse.txt for controls, recovery implications and current build limitations.

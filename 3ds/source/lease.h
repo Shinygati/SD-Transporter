@@ -18,4 +18,5 @@ int leaseReturn(const char *, const uint8_t token[16], const uint8_t *, char *, 
 int leaseForceUnlock(const char *, char *, unsigned);
 void leaseTokenText(const uint8_t *, char[33]);
 int leaseTokenParse(const char *, uint8_t[16]);
+int leaseMatchesTrainer(const char *path,const char *key);
 #endif

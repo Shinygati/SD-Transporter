@@ -101,8 +101,9 @@ static void failed(void) {
     for(u32 i=0;i<256*192;i++)v[i]=0x001f;
     for(;;)__asm__ volatile("nop");
 }
-/* Western Gen 4 sources accepted by gen5Prepare(): Diamond, Pearl, Platinum,
- * HeartGold, SoulSilver in English (E/P), French, German, Italian, Spanish.
+/* Gen 4 sources accepted by gen5Prepare(): Diamond, Pearl, Platinum,
+ * HeartGold, SoulSilver in English (E/P), French, German, Italian, Spanish,
+ * Japanese and Korean.
  * The native Black 2 client identifies the game itself from this header. */
 static int supportedGameCode(u32 code) {
     u32 game=code&0x00ffffffu,region=code>>24;
@@ -111,9 +112,20 @@ static int supportedGameCode(u32 code) {
                   game==0x555043u || /* CPU Platinum   */
                   game==0x4b5049u || /* IPK HeartGold  */
                   game==0x475049u;   /* IPG SoulSilver */
-    int western=region=='E' || region=='P' || region=='F' ||
-                region=='D' || region=='I' || region=='S';
-    return knownGame && western;
+    int supportedRegion=region=='E' || region=='P' || region=='F' ||
+                region=='D' || region=='I' || region=='S' || region=='J' || region=='K';
+    return knownGame && supportedRegion;
+}
+/* Classify only the cartridge family. Preserve the real regional header and
+ * let the client's native family-specific save reader validate the save. */
+u32 gen5_source_classify(const u8 *sourceHeader) {
+    u32 code=*(const u32 *)(sourceHeader+12);
+    if(!supportedGameCode(code))failed();
+    switch(code&0x00ffffffu) {
+        case 0x414441u: case 0x415041u: return 0; /* Diamond / Pearl */
+        case 0x555043u: return 1;                /* Platinum */
+        default: return 2;                       /* HeartGold / SoulSilver */
+    }
 }
 void *gen5_header(void) {
     if(!headerReady) {
@@ -133,9 +145,10 @@ u32 gen5_present(void) {return 0;}
 u32 gen5_enabled(void) {return 1;}
 void gen5_noop(void) {}
 u32 gen5_language(u32 language) {
-    // Western Gen4 save structures/character encoding share this source adapter.
+    // Accept every released Gen IV language; the native client decodes the save.
     // Keep the stored trainer and individual Pokemon language fields unchanged.
-    return language==2 || language==3 || language==4 || language==5 || language==7 ? 0 : 3;
+    return language==1 || language==2 || language==3 || language==4 ||
+           language==5 || language==7 || language==8 ? 0 : 3;
 }
 int gen5_ack(u32 *common,u32 command,u32 tries) {
     (void)command;(void)tries;*(u32*)common[0]=0;return 1;

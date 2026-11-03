@@ -72,3 +72,13 @@ This list documents provenance; it does not relicense third-party components or 
 ## Native NDS interface and DS Lite Wi-Fi setup
 
 The NDS companion uses libnds's native console font and the devkitPro Calico/DSWifi WFC APIs. The DS Lite setup follows the documented scan/connect workflow in devkitPro's [access-point search example](https://github.com/devkitPro/nds-examples/blob/master/dswifi/ap_search/source/template.c), credited there to dovoto. The framebuffer UI, input handling and card-based profile persistence are project code; the example's console UI and assets are not bundled. See the [DSWifi source and license](https://github.com/devkitPro/dswifi) for the upstream network stack and [Calico](https://github.com/devkitPro/calico) for its wireless infrastructure.
+
+## iPhone companion and mobile presentation
+
+The SwiftUI iPhone interface, Core Motion integration, flat C bridge, ownership journal, local HTTP client and project generator are SD Transporter additions developed with AI assistance as disclosed above. They compile the existing shared companion logic; no third-party iOS game framework or retail artwork is bundled. Apple Foundation, SwiftUI, WebKit and Core Motion are platform dependencies supplied by the iOS SDK. The mobile grass illustrations and launcher vector are project artwork; the follower bitmap is read only from the user-provided walker. Android/Apple SDKs and AltStore retain their respective ownership and licenses. AltStore is an optional external signing/installation tool and is not bundled.
+
+## Companion name mappings
+
+English item names use the original HGSS spellings recorded in the [pret/pokeheartgold item-name bank](https://github.com/pret/pokeheartgold/blob/master/files/msgdata/msg/msg_0222.gmm). Pokémon species names follow the factual National Pokédex mapping credited above. The tables identify game data; no retail message archive or ROM is distributed.
+
+The mobile profile catalogue, independent walking baselines, trainer-binding checks, recovery interface and phone battle presentation are SD Transporter additions. Pokémon battle images are decoded from the user-supplied walker; no retail sprite assets or firmware are bundled. Motion timing is recreated using the research references above. The DS companion uses the [libdvm filesystem library](https://github.com/devkitPro/libdvm), supplied by devkitPro under its upstream licences.

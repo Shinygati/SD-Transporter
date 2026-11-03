@@ -7,6 +7,7 @@ int syncStart(const char *, SyncBeforeCheckout, SyncEvent);
 void syncPoll(void);
 void syncStop(void);
 int syncReady(void);
+int syncBusy(void);
 const char *syncAddress(void);
 const char *syncStatus(void);
 #endif

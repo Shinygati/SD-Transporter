@@ -25,6 +25,7 @@
 #include "palpark_retail.h"
 #include "nitrofs.h"
 #include "walker_ds_payload.h"
+#include "walker_history.h"
 
 #define WALKER_INI_PATH(conf) ((conf)->gameOnFlashcard ? "fat:/_nds/nds-bootstrap/pokewalker.ini" : "sd:/_nds/nds-bootstrap/pokewalker.ini")
 #define WALKER_ERROR_PATH(conf) ((conf)->gameOnFlashcard ? "fat:/_nds/nds-bootstrap/pokewalker-error.txt" : "sd:/_nds/nds-bootstrap/pokewalker-error.txt")
@@ -48,7 +49,7 @@ static void walkerEnableDsDiagnostics(configuration *conf) {
     easysave::ini settings(WALKER_INI_PATH(conf));
     FILE *report = fopen("fat:/_nds/nds-bootstrap/pokewalker-status.txt", "w");
     if (report) {
-        fprintf(report, "BUILD=sdwalk4\nGAME=%s\nSAVE=%s\nKEY=%s\nENABLED=%s\nGAME_ON_FLASHCARD=%d\nSAVE_ON_FLASHCARD=%d\nB4DS=%d\n",
+        fprintf(report, "BUILD=sdlang2\nGAME=%s\nSAVE=%s\nKEY=%s\nENABLED=%s\nGAME_ON_FLASHCARD=%d\nSAVE_ON_FLASHCARD=%d\nB4DS=%d\n",
             conf->ndsPath, conf->savPath ? conf->savPath : "", key,
             settings.fetch(key, "VIRTUAL_WALKER", "0").c_str(),
             conf->gameOnFlashcard, conf->saveOnFlashcard, conf->b4dsMode);
@@ -108,7 +109,7 @@ static void walkerPrepare(configuration *conf) {
 	struct stat st;
 	/* Any outstanding checkout blocks HGSS, including an interrupted return. */
 	if (stat((path + ".lease").c_str(), &st) == 0) {
-		walkerSkip(conf, "walker is checked out to Android; return or force-unlock it in the companion", path.c_str());
+		walkerSkip(conf, "walker is checked out to a phone; return or force-unlock it in the companion", path.c_str());
 		return;
 	}
 	if (stat(path.c_str(), &st) != 0) {
@@ -132,6 +133,10 @@ static void walkerPrepare(configuration *conf) {
 		walkerSkip(conf, "walker file is not 64 KiB", path.c_str());
 		return;
 	}
+    if (!walkerPrelaunchSnapshot(path)) {
+        walkerSkip(conf,"could not preserve the pre-launch recovery snapshot",path.c_str());
+        return;
+    }
     if (conf->gameOnFlashcard) {
         struct nitroFSStruct payload;
         if (nitroFSOpen(NULL, &payload, "nitro:/walker_ds.bin", 0, 0) < 0 || payload.start < 0 ||

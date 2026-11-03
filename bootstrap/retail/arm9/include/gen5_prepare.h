@@ -49,17 +49,17 @@ static bool gen5Prepare(configuration *c) {
     f=fopen(c->gen5RomPath,"rb");if(!f)return gen5PrepareFail("R03: Cannot open source ROM");
     ok=fread(h,1,512,f)==512;fclose(f);
     if(!ok || h[0x12])return gen5PrepareFail("R04: Invalid source ROM header");
-    // Western Gen 4 sources: English (US E, EU/AUS P), French, German,
-    // Italian and Spanish. The verified native Gen V client handles each save.
+    // Gen IV source releases: English (US E, EU/AUS P), French, German,
+    // Italian, Spanish, Japanese and Korean. Keep the actual source header.
     const char region = h[15];
-    const bool western = region=='E' || region=='P' || region=='F' ||
-                         region=='D' || region=='I' || region=='S';
+    const bool supportedRegion = region=='E' || region=='P' || region=='F' ||
+                         region=='D' || region=='I' || region=='S' || region=='J' || region=='K';
     const bool isDiamond = !memcmp(h+12,"ADA",3);
     const bool isPearl = !memcmp(h+12,"APA",3);
     const bool isPlatinum = !memcmp(h+12,"CPU",3);
     const bool isHeartGold = !memcmp(h+12,"IPK",3);
     const bool isSoulSilver = !memcmp(h+12,"IPG",3);
-    if(!western || !(isDiamond || isPearl || isPlatinum || isHeartGold || isSoulSilver))
+    if(!supportedRegion || !(isDiamond || isPearl || isPlatinum || isHeartGold || isSoulSilver))
         return gen5PrepareFail("R04: Unsupported Gen 4 game/language");
     // Trimmed and untrimmed dumps are both fine as long as the file holds
     // every byte the header says the game uses.

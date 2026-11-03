@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pokewalker companion privacy policy</title>
+<style>body{max-width:44rem;margin:auto;padding:24px;background:#0b1a28;color:#e9f6f0;font:17px/1.65 system-ui,sans-serif}h1,h2{color:#44ddb3;line-height:1.25}a{color:#fcca66}</style>
+<h1>Privacy policy</h1><p>Pokewalker companion by Shinygati<br>Effective 3 November 2026</p>
+<p>This independent companion stores and processes your walker data on your device. It has no developer-operated account system, advertising, analytics or tracking service.</p>
+<h2>Information used by the app</h2>
+<p>A walker file contains game data, including a trainer name and identifiers, Pokémon, route information, step totals, watts and collected rewards. The app also stores your selected settings, saved console names and network addresses, and the handoff records needed to prevent conflicting copies.</p>
+<p>If you enable the phone pedometer, the app reads the device's step counter to credit walking progress. It stores the current counter baseline and credited progress; it does not request your location, contacts, camera or microphone. An optional time-based mode can generate game steps without reading a physical step sensor.</p>
+<h2>Local console transfers</h2>
+<p>When you choose to receive or return a walker, its data is transferred directly between this device and the console address you enter on your local network. This includes any trainer information and physical-step totals contained in the walker. Shinygati does not receive that transfer.</p>
+<p>The current local transfer protocol uses HTTP and is <strong>not encrypted</strong>. Use a private network you trust. Someone with access to the network may be able to observe or interfere with transfers. A session record and checksum protect transfer consistency; they do not provide transport encryption.</p>
+<h2>Permissions and background operation</h2>
+<p>Physical activity permission is used for optional real-step counting. Notification and foreground-service permissions support user-enabled walking while the screen is off. You can pause walking in Settings; the app does not automatically switch to simulated steps when a sensor or permission is unavailable.</p>
+<p>On iPhone, motion access serves the same purpose. Recent physical steps can be recovered from the device's motion history when the app reopens; only the history supplied by iOS is available. The iPhone time-based mode runs while the app is active.</p>
+<h2>Walker profiles</h2>
+<p>You can keep several walker profiles on the same phone. Each stores its own game data, trainer-name/public-ID binding, walking baseline, settings, handoff journal and recovery copies. All active profiles may credit the same physical steps. Paused, revoked and pending-return profiles do not earn steps. Profile names and the selected profile are stored locally. No developer account is created.</p>
+<h2>Recovery copies and retention</h2>
+<p>The app keeps recovery snapshots before replacing an older phone copy, before returning a walker, and when receiving one. Console companions keep separate backups on the console's storage. Older snapshots are not automatically merged into the active walker or used to reactivate a revoked session.</p>
+<p>After a confirmed return, the phone removes its active Pokémon. A pending return stays locked and cannot walk or earn rewards. Recovery snapshots are accessible only through Recovery copies; they are never automatically loaded as active Pokémon.</p>
+<p>History is limited to ten snapshots per walker, grouped by stable device/trainer identity. The oldest snapshot is removed only after a new one is verified. Active files, pending handoff safety copies and ownership receipts are outside this history limit.</p>
+<p>You can delete individual recovery snapshots or the active walker in Settings. Active deletion preserves a recovery snapshot first. Separate, small completed/deleted session records remain in private storage to prevent an old journal from reactivating a returned Pokémon. The recovery manager cannot delete these ownership records. Local deletion does not unlock an offline console; use its recovery action if necessary.</p>
+<p>Phone data remains until you remove the app's local data or uninstall the app. Exported recovery files and copies retained on a console remain until you delete them separately. An interrupted handoff may leave the console locked; return the walker or use the console companion's recovery action.</p>
+<p>Return or export a checked-out walker before uninstalling or clearing app data. Removing phone data does not automatically unlock the console. This Android app disables Android's automatic application backup; exported files may be backed up by services you choose outside this app.</p>
+<h2>Your choices</h2>
+<p>You can disable step sources, revoke permissions in system settings, remove saved console addresses, export or delete recovery copies, delete the active walker, and remove local application data. No developer account or remote deletion request is needed. Recovery copies are kept to protect game data; deleting app data removes the private copies as well as the active phone state.</p>
+<h2>Contact</h2>
+<p>Developer: Shinygati<br>Privacy and support: <a href="mailto:anthoney1313@gmail.com">anthoney1313@gmail.com</a></p>
+<p>This policy describes the current app. A future version that changes data handling will update the policy and request any additional permissions it needs.</p>
+</html>

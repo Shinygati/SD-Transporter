@@ -2,6 +2,7 @@
 #include <jni.h>
 #include <stdint.h>
 #include <time.h>
+#include <stdio.h>
 #include "walkerfile.h"
 #include "species.h"
 #define JNI_NAME(n) Java_io_github_sdtransporter_pokewalker_Native_##n
@@ -23,10 +24,17 @@ JNIEXPORT jlongArray JNICALL JNI_NAME(info)(JNIEnv *env,jclass cls,jbyteArray da
 }
 JNIEXPORT jstring JNICALL JNI_NAME(text)(JNIEnv *env,jclass cls,jbyteArray data,jint kind) {
     (void)cls;uint8_t *ee=bytes(env,data);if(!ee)return 0;WalkerInfo i;walkerRead(ee,&i);
-    const char *s=kind==0 ? i.trainer : kind==1 ? i.nickname : i.route;
+    char trainer[128];if(kind==4){walkerTrainerKey(ee,trainer);jstring key=(*env)->NewStringUTF(env,trainer);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);return key;}snprintf(trainer,sizeof(trainer),i.registered?"%s / ID %05lu":"Trainer unavailable",i.trainer,(unsigned long)i.trainerId);
+    const char *s=kind==3 ? trainer : kind==0 ? i.trainer : kind==1 ? i.nickname : i.route;
     jstring out=(*env)->NewStringUTF(env,s);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);return out;
 }
 JNIEXPORT jstring JNICALL JNI_NAME(species)(JNIEnv *env,jclass cls,jint id) {(void)cls;return (*env)->NewStringUTF(env,speciesName((unsigned)id));}
+JNIEXPORT jstring JNICALL JNI_NAME(item)(JNIEnv *env,jclass cls,jint id) {(void)cls;return (*env)->NewStringUTF(env,itemName((unsigned)id));}
+JNIEXPORT jboolean JNICALL JNI_NAME(walkable)(JNIEnv *env,jclass cls,jbyteArray data) {
+    (void)cls;uint8_t *ee=bytes(env,data);if(!ee)return JNI_FALSE;
+    int ok=walkerCanWalk(ee);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);
+    return ok?JNI_TRUE:JNI_FALSE;
+}
 JNIEXPORT jint JNICALL JNI_NAME(resume)(JNIEnv *env,jclass cls,jbyteArray data,jlong now,jint rate) {
     (void)cls;uint8_t *ee=bytes(env,data);if(!ee)return 0;int out=walkerResume(ee,(uint32_t)now,(unsigned)rate);
     (*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,0);return out;
@@ -52,6 +60,8 @@ JNIEXPORT jint JNICALL JNI_NAME(command)(JNIEnv *env,jclass cls,jbyteArray data,
     case 5:walkerClearEncounter(ee);out=1;break;
     case 6:out=(int)walkerPokemonId(ee,(unsigned)arg);break;
     case 7:out=(int)walkerItemId(ee,(unsigned)arg);break;
+    case 8:out=(int)walkerRouteItemId(ee,(unsigned)arg);break;
+    case 9:out=(int)walkerRoutePokemonId(ee,(unsigned)arg);break;
     }
     (*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,0);return out;
 }

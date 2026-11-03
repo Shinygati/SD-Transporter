@@ -9,9 +9,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#ifndef _WIN32
+#ifdef _WIN32
+#include <direct.h>
+#else
 #include <unistd.h>
 #endif
+#include "recovery_limit.h"
 static WalkerReplace replaceFile;
 static int receipt(const char *, const uint8_t[16], uint32_t, unsigned, int);
 void leaseSetReplace(WalkerReplace fn) { replaceFile = fn; }
@@ -64,9 +67,69 @@ static int publish(const char *p, const void *data, unsigned length) {
     return 0;
   int ok = writeExact(temporary, data, length) &&
            readExact(temporary, check, length) && !memcmp(check, data, length);
+  if(ok)ok=(replaceFile ? replaceFile(temporary,p) : rename(temporary,p))==0;
+  /* Verify the published name too: a successful rename alone is not a saved
+   * return acknowledgement. Retain phone ownership on any verification error. */
+  if(ok)ok=readExact(p,check,length) && !memcmp(check,data,length);
   free(check);
-  return ok &&
-         (replaceFile ? replaceFile(temporary, p) : rename(temporary, p)) == 0;
+  return ok;
+}
+/* Keep immutable ownership-boundary snapshots. Later HGSS resets, new strolls
+ * and fresh checkouts must not destroy the last copy of an earlier Pokemon.
+ * These are recovery data, never automatically merged into a newer session. */
+static int ensureDirectory(const char *p) {
+  struct stat st;
+  if (!stat(p, &st)) return (st.st_mode & S_IFMT) == S_IFDIR;
+#ifdef _WIN32
+  return _mkdir(p) == 0;
+#else
+  return mkdir(p, 0777) == 0;
+#endif
+}
+static const char *fileName(const char *p) {
+  const char *slash=strrchr(p,'/'), *backslash=strrchr(p,'\\');
+  if(backslash && (!slash || backslash>slash))slash=backslash;
+  return slash?slash+1:p;
+}
+static int backupDirectory(char directory[600], const char *p, int create) {
+  unsigned parent=(unsigned)(fileName(p)-p);
+  if(parent+sizeof("transfers/backups")>=600)return 0;
+  memcpy(directory,p,parent);strcpy(directory+parent,"transfers");
+  if(create && !ensureDirectory(directory))return 0;
+  strcat(directory,"/backups");
+  return !create || ensureDirectory(directory);
+}
+static int archive(const char *p, const uint8_t token[16], const char *kind,
+                   const uint8_t *data) {
+  char directory[600], name[600], text[33];
+  if(!backupDirectory(directory,p,1))return 0;
+  leaseTokenText(token,text);
+  int n=snprintf(name,sizeof(name),"%s/%s.%s-%s-%08lx.bak",directory,
+      fileName(p),kind,text,(unsigned long)walkerCrc(data,WALKER_FILE_SIZE));
+  if(n<0 || n>=(int)sizeof(name))return 0;
+  struct stat st;
+  uint8_t *check=malloc(WALKER_FILE_SIZE);
+  if(!check)return 0;
+  int status=stat(name,&st), exists=status==0;
+  if(status && errno!=ENOENT){free(check);return 0;}
+  int ok=exists ? readExact(name,check,WALKER_FILE_SIZE) &&
+      !memcmp(check,data,WALKER_FILE_SIZE) : publish(name,data,WALKER_FILE_SIZE);
+  if(ok)ok=readExact(name,check,WALKER_FILE_SIZE) && !memcmp(check,data,WALKER_FILE_SIZE);
+  free(check);return ok && walkerPruneRecovery(p,name);
+}
+/* A nonempty console file can be a new stroll copied in while a lease remains.
+ * Never silently replace it. The only permitted nonempty return target is an
+ * identical already-published return (acknowledgement/crash retry). */
+static int sameFile(const char *p, const uint8_t *data) {
+  uint8_t *check=malloc(WALKER_FILE_SIZE);
+  if(!check)return 0;
+  int ok=readExact(p,check,WALKER_FILE_SIZE) && !memcmp(check,data,WALKER_FILE_SIZE);
+  free(check);return ok;
+}
+static int emptyOrSame(const char *p, const uint8_t *data) {
+  struct stat st;
+  if(stat(p,&st))return errno==ENOENT;
+  return st.st_size==0 || (st.st_size==WALKER_FILE_SIZE && sameFile(p,data));
 }
 static int readMeta(const char *p, uint8_t meta[64]) {
   char name[600];
@@ -89,36 +152,88 @@ int leaseInspect(const char *p, WalkerLease *out) {
     memcpy(out->token, m + 8, 16);
     out->baseCrc = get32(m + 24);
     out->walkStart = get32(m + 28);
-    out->revoked = m[40] != 0 || receipt(p, m + 8, 0, 0, 0) == 2;
+    int record=receipt(p,m+8,0,0,0);
+    if(record<0)return -1;
+    out->revoked = m[40] != 0 || record == 2;
   }
   return 1;
 }
+static int sessionReceiptPath(char name[600],const char *p,const uint8_t token[16],int create) {
+  char directory[600],text[33];
+  if(!backupDirectory(directory,p,create))return 0;
+  leaseTokenText(token,text);
+  int n=snprintf(name,600,"%s/%s.session-%s.receipt",directory,fileName(p),text);
+  return n>0 && n<600;
+}
+static int validReceipt(const uint8_t r[40],const uint8_t token[16]) {
+  return !memcmp(r,"PWRECEIP",8) && !memcmp(r+8,token,16) &&
+      get32(r+36)==walkerCrc(r,36) && (get32(r+28)==1 || get32(r+28)==2);
+}
+/* Session receipts survive later handoffs. A stale phone never regains write
+ * authority merely because another session has replaced the latest receipt. */
+static int readRecordedReceipt(const char *p,const uint8_t token[16],uint8_t r[40]) {
+  char name[600];struct stat st;
+  if(!sessionReceiptPath(name,p,token,0))return -1;
+  if(!stat(name,&st))return readExact(name,r,40) && validReceipt(r,token)?1:-1;
+  if(errno!=ENOENT)return -1;
+  if(!path(name,p,".returned"))return -1;
+  if(readExact(name,r,40) && validReceipt(r,token))return 1;
+  return 0;
+}
 static int receipt(const char *p, const uint8_t token[16], uint32_t crc,
                    unsigned kind, int write) {
-  char name[600];
-  uint8_t r[40] = {0};
-  if (!path(name, p, ".returned"))
-    return 0;
-  if (write) {
-    memcpy(r, "PWRECEIP", 8);
-    memcpy(r + 8, token, 16);
-    put32(r + 24, crc);
-    put32(r + 28, kind);
-    put32(r + 36, walkerCrc(r, 36));
-    return publish(name, r, 40);
+  char name[600];uint8_t r[40]={0};
+  if(write) {
+    memcpy(r,"PWRECEIP",8);memcpy(r+8,token,16);put32(r+24,crc);put32(r+28,kind);
+    put32(r+36,walkerCrc(r,36));
+    if(!sessionReceiptPath(name,p,token,1))return 0;
+    struct stat st;uint8_t check[40];
+    if(!stat(name,&st)) {
+      if(!readExact(name,check,40))return 0;
+      if(memcmp(check,r,40)) {
+        /* Explicit force recovery may revoke a completed-but-not-cleaned return;
+         * a revocation is permanent and can never be downgraded. */
+        if(kind!=2 || !validReceipt(check,token) || get32(check+28)!=1 || !publish(name,r,40))return 0;
+      }
+    } else {
+      if(errno!=ENOENT || !publish(name,r,40))return 0;
+    }
+    if(!readExact(name,check,40) || memcmp(check,r,40))return 0;
+    return path(name,p,".returned") && publish(name,r,40);
   }
-  if (!readExact(name, r, 40) || memcmp(r, "PWRECEIP", 8) ||
-      memcmp(r + 8, token, 16) || get32(r + 36) != walkerCrc(r, 36))
-    return 0;
-  if (get32(r + 28) == 2)
-    return 2; /* revoked */
-  return get32(r + 24) == crc ? 1 : 0;
+  int found=readRecordedReceipt(p,token,r);
+  if(found<=0)return found;
+  if(get32(r+28)==2)return 2;
+  return get32(r+24)==crc?1:0;
+}
+static const uint8_t *leaseIdentity(const uint8_t *ee) {
+  for(unsigned copy=0;copy<2;copy++) {
+    const uint8_t *p=ee+(copy?0x1ed:0xed);uint8_t sum=1;
+    for(unsigned n=0;n<104;n++)sum+=p[n];
+    if(sum==p[104])return p;
+  }
+  return 0;
 }
 static int compatible(const uint8_t *a, const uint8_t *b) {
   WalkerInfo x, y;
-  return walkerRead(a, &x) && walkerRead(b, &y) && y.registered &&
-         y.hasPokemon && x.walkStart == y.walkStart &&
-         !memcmp(a + 0xed, b + 0xed, 104) && y.totalSteps >= x.totalSteps;
+  if (!walkerRead(a,&x) || !walkerRead(b,&y) || !walkerCanWalk(a) ||
+      !walkerCanWalk(b) || x.walkStart!=y.walkStart || y.totalSteps<x.totalSteps)
+    return 0;
+  const uint8_t *originalId=leaseIdentity(a),*returnedId=leaseIdentity(b);
+  if(!originalId || !returnedId)return 0;
+  if (x.hasPokemon)
+    return y.hasPokemon && x.species==y.species && !memcmp(originalId,returnedId,104);
+  if (!y.hasPokemon) return !memcmp(originalId,returnedId,104);
+  /* The sole permitted identity transition is the original empty-walker join.
+   * Preserve trainer/device identity and course; verify the designated reward. */
+  uint8_t identity[104],pokemon[16];
+  memcpy(identity,originalId,sizeof(identity));
+  identity[0x5b]|=6;
+  memcpy(identity+4,identity,4);memcpy(identity+10,identity+8,2);
+  memcpy(pokemon,a+WALKER_ROUTE+0x52+32,sizeof(pokemon));pokemon[13]&=0x7f;
+  return !memcmp(identity,returnedId,sizeof(identity)) &&
+         !memcmp(pokemon,b+WALKER_ROUTE,sizeof(pokemon)) &&
+         !memcmp(a+WALKER_ROUTE+0x28,b+WALKER_ROUTE+0x28,0xbe - 0x28);
 }
 int leaseSessionRevoked(const char *p, const uint8_t token[16]) {
   return receipt(p, token, 0, 0, 0) == 2;
@@ -147,6 +262,8 @@ int leaseCheckout(const char *p, const uint8_t token[16], uint8_t *snapshot,
                   "The local phone snapshot could not be verified.");
     struct stat st;
     if (stat(p, &st) || st.st_size != 0) {
+      if (!emptyOrSame(p, snapshot))
+        return fail(error,size,"Console walker changed since checkout. No data was replaced; use recovery.");
       if (!writeExact(p, "", 0) || stat(p, &st) || st.st_size != 0)
         return fail(
             error, size,
@@ -156,12 +273,15 @@ int leaseCheckout(const char *p, const uint8_t token[16], uint8_t *snapshot,
       *out = existing;
     return 1; /* retry of the same handoff */
   }
-  if (leaseSessionRevoked(p, token))
-    return fail(error, size, "This session was revoked. Start a fresh handoff.");
+  uint8_t previousReceipt[40];
+  if (readRecordedReceipt(p,token,previousReceipt)!=0)
+    return fail(error,size,"This session is finished, revoked, or damaged. Start a fresh handoff.");
   if (!readExact(p, snapshot, WALKER_FILE_SIZE) ||
-      !walkerRead(snapshot, &info) || !info.registered || !info.hasPokemon)
-    return fail(error, size, "Only a walker containing a Pokemon can be sent.");
+      !walkerRead(snapshot, &info) || !walkerCanWalk(snapshot))
+    return fail(error, size, "A registered walker with valid companion or joining-course data is required.");
   uint32_t crc = walkerCrc(snapshot, WALKER_FILE_SIZE);
+  if (!archive(p, token, "checkout", snapshot))
+    return fail(error, size, "Could not preserve walker recovery history. Nothing was sent.");
   path(name, p, ".phone");
   if (!publish(name, snapshot, WALKER_FILE_SIZE))
     return fail(error, size, "Could not save the console recovery snapshot.");
@@ -198,6 +318,10 @@ static void finish(const char *p) {
   path(name, p, ".phone");
   remove(name);
 }
+static int validFinalWalker(const char *p) {
+  uint8_t *data=malloc(WALKER_FILE_SIZE);WalkerInfo info;if(!data)return 0;
+  int ok=readExact(p,data,WALKER_FILE_SIZE)&&walkerRead(data,&info)&&info.setUp;free(data);return ok;
+}
 int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
                 char *error, unsigned size) {
   uint32_t crc = walkerCrc(incoming, WALKER_FILE_SIZE);
@@ -207,8 +331,10 @@ int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
     return fail(
         error, size,
         "This phone session was force-unlocked and can no longer sync.");
-  if (!locked && ack == 1)
-    return 2; /* acknowledge retry, never overwrite current console progress */
+  if (ack == 1 && (locked != 1 || memcmp(token,loan.token,16))) {
+    if(!validFinalWalker(p))return fail(error,size,"The final .walker is missing or invalid. Return is not confirmed; keep the phone copy for recovery.");
+    return 2;
+  } /* acknowledge retry, never overwrite current console progress */
   if (locked != 1 || loan.revoked || memcmp(token, loan.token, 16))
     return fail(
         error, size,
@@ -225,6 +351,10 @@ int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
   if (!ok)
     return fail(error, size,
                 "Return has a different walker, stroll, or invalid progress.");
+  if (!archive(p, token, "return", incoming))
+    return fail(error, size, "Could not preserve returned walker history. The phone keeps ownership.");
+  if (!emptyOrSame(p, incoming))
+    return fail(error, size, "A different walker is on the console. Return refused; both copies are kept.");
   if (!publish(p, incoming, WALKER_FILE_SIZE))
     return fail(
         error, size,
@@ -237,6 +367,7 @@ int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
   if (leaseInspect(p, 0))
     return fail(error, size,
                 "Return saved; could not remove the lock. Retry sync.");
+  if(!sameFile(p,incoming))return fail(error,size,"Final .walker verification failed after lock cleanup. The phone keeps its copy.");
   return 1;
 }
 int leaseForceUnlock(const char *p, char *error, unsigned size) {
@@ -259,6 +390,20 @@ int leaseForceUnlock(const char *p, char *error, unsigned size) {
   if (!ok || !walkerRead(original, &info)) {
     free(original);
     return fail(error, size, "No intact matching console backup was found.");
+  }
+  if (!archive(p, loan.token, "recovery", original)) {
+    free(original);
+    return fail(error,size,"Could not preserve recovery history. No walker was replaced.");
+  }
+  struct stat current;
+  int currentStatus=stat(p,&current);
+  if (!currentStatus && current.st_size) {
+    uint8_t *other=malloc(WALKER_FILE_SIZE);
+    ok=other && readExact(p,other,WALKER_FILE_SIZE) && archive(p,loan.token,"conflict",other);
+    free(other);
+    if(!ok){free(original);return fail(error,size,"Could not preserve the current console walker. Recovery stopped.");}
+  } else if (currentStatus && errno!=ENOENT) {
+    free(original);return fail(error,size,"Cannot inspect the current console walker. Recovery stopped.");
   }
   /* Revoke first. A stale phone must not regain authority after recovery. */
   if (!receipt(p, loan.token, loan.baseCrc, 2, 1)) {
@@ -315,4 +460,12 @@ int leaseTokenParse(const char *text, uint8_t token[16]) {
     token[i] = (uint8_t)(a * 16 + b);
   }
   return 1;
+}
+
+int leaseMatchesTrainer(const char *p,const char *key) {
+    if(strlen(key)!=36)return 0;
+    char source[600],actual[37];int locked=leaseInspect(p,0);if(locked<0)return 0;
+    if(!path(source,p,locked?".phone":""))return 0;
+    uint8_t *data=malloc(WALKER_FILE_SIZE);if(!data)return 0;
+    int ok=readExact(source,data,WALKER_FILE_SIZE)&&walkerTrainerKey(data,actual)&&!strcmp(key,actual);free(data);return ok;
 }

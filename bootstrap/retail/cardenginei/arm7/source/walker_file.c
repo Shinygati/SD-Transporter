@@ -12,6 +12,7 @@
 /* HGSS uses the NTR cardengine. The TWL SDK variants cannot install this
  * walker and have no room for an unused EEPROM file handle and its state. */
 extern u32 walkerControl;
+extern bool gen5CheckedIO(void *buffer,aFile *file,u32 offset,u32 length,bool writing);
 
 #define WALKER_IDLE_FRAMES 30 /* ~0.5 s without new writes */
 
@@ -50,7 +51,16 @@ void walkerWrite(void) {
 		/* Clear first: a sector changed again meanwhile is marked again and
 		 * rewritten on the next pass. */
 		c->dirty[i] = 0;
-		fileWrite((char *)(c->eeprom + i * WALKER_SECTOR), &walkerFile, i * WALKER_SECTOR, WALKER_SECTOR);
+        /* The shared checked SD backend verifies physical read-back and driver
+         * errors. Keep the sector dirty and retry instead of reporting it saved. */
+        for(u32 offset=0;offset<WALKER_SECTOR;offset+=512) {
+            const u32 at=i*WALKER_SECTOR+offset;
+            if(!gen5CheckedIO((void *)(c->eeprom+at),&walkerFile,at,512,true)) {
+                c->dirty[i]=1;
+                walkerIdleFrames=0;
+                return;
+            }
+        }
 	}
 	c->flushedSeq = seq;
 	c->flushes++;

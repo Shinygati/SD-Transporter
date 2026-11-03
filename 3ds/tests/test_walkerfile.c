@@ -55,6 +55,24 @@ static void makeStrolling(int withClock, unsigned start) {
     }
 }
 
+static void makeSolo(unsigned start) {
+    makeStrolling(1,start);
+    ee[0xed+0x5b]=1;
+    for(unsigned n=0;n<4;n++){ee[0xed+n]=(unsigned char)(n+17);ee[0xed+4+n]=0;}
+    ee[0xed+8]=4;ee[0xed+10]=ee[0xed+11]=0;
+    seal(0xed,0x1ed,104);
+    memset(ee+WALKER_ROUTE,0,16);
+    uint8_t *candidate=ee+WALKER_ROUTE+0x52+32;
+    memset(candidate,0,16);candidate[0]=25;candidate[12]=7;candidate[13]=0x80;
+    memset(ee+0x9efe,0x35,1536);
+}
+static void soloGuaranteedRoll(void) {
+    /* Test-only seed: the next shared PRNG value passes the normal 40% gate. */
+    memset(ee+0x10+28,0,4);
+    unsigned crc=walkerCrc(ee+0x10,92);
+    for(unsigned n=0;n<4;n++)ee[0x10+92+n]=(unsigned char)(crc>>(n*8));
+}
+
 int main(void) {
     WalkerInfo info;
     const unsigned t0 = 847775796;
@@ -257,6 +275,34 @@ int main(void) {
     seal(0xed, 0x1ed, 0x68);
     walkerAddSteps(ee, t0 + 7200, 99, &report);
     CHECK("empty walker has no physical progress", report.steps, 0);
+    /* Registered empty walkers can walk and gain the original course companion. */
+    makeSolo(t0);CHECK("registered solo eligible",walkerCanWalk(ee),1);
+    CHECK("solo resume",walkerResume(ee,t0,10),1);soloGuaranteedRoll();
+    walkerAddSteps(ee,t0+3600,299,&report);
+    CHECK("solo below step threshold",report.joined,0);
+    CHECK("solo physical steps credited",report.steps,299);
+    walkerRead(ee,&info);CHECK("solo visible steps",info.strollSteps,299);
+    makeSolo(t0);walkerResume(ee,t0,10);soloGuaranteedRoll();
+    walkerAddSteps(ee,t0+3600,300,&report);
+    CHECK("solo physical auto join",report.joined,1);
+    walkerRead(ee,&info);CHECK("joined species",info.species,25);CHECK("joined level",info.level,7);
+    CHECK("joined friendship",info.friendship,70);CHECK("joined flag",ee[0xed+0x5b]&6,6);
+    CHECK("joined appearance normalized",ee[WALKER_ROUTE+13]&0x80,0);
+    CHECK("joining original portrait copied",memcmp(ee+0x933e,ee+0x9efe,1536),0);
+    CHECK("joined mirrored identity",memcmp(ee+0xed,ee+0x1ed,105),0);
+    makeSolo(t0);walkerResume(ee,t0,10);soloGuaranteedRoll();
+    walkerAdvance(ee,t0+3600,10,&report);CHECK("solo timed auto join",report.joined,1);
+    uint8_t joinedRecord[16];memcpy(joinedRecord,ee+WALKER_ROUTE,16);
+    soloGuaranteedRoll();walkerAdvance(ee,t0+7200,10,&report);
+    CHECK("never replace existing companion",memcmp(joinedRecord,ee+WALKER_ROUTE,16),0);
+    CHECK("not joined twice",report.joined,0);
+    makeSolo(t0);ee[0xed+0x5b]=0;seal(0xed,0x1ed,104);
+    CHECK("unregistered solo refused",walkerCanWalk(ee),0);
+    unsigned soloCrc=walkerCrc(ee,sizeof(ee));
+    CHECK("unregistered solo no progress",walkerCredit(ee,t0+3600,10),0);
+    CHECK("unregistered solo unchanged",walkerCrc(ee,sizeof(ee)),soloCrc);
+    makeSolo(t0);ee[0xed+0x5b]=3;seal(0xed,0x1ed,104);
+    CHECK("malformed occupied record not treated as empty",walkerCanWalk(ee),0);
     if (failures) {
         printf("%d failure(s)\n", failures);
         return 1;

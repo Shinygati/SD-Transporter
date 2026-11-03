@@ -86,12 +86,12 @@ inline std::string toggleVirtualWalker(const std::string& path) {
 	return file.SaveIniFile(walkerIni(path)) ? walkerLabel(path) : "Could not write settings";
 }
 
-// Western Diamond, Pearl, Platinum, HeartGold and SoulSilver (EN US/EU, FR, DE, IT, ES).
+// Diamond, Pearl, Platinum, HeartGold and SoulSilver: EN US/EU, FR, DE, IT, ES, JA, KO.
 inline bool isTransferSource(const char* tid) {
 	if (!tid || !tid[0]) return false;
 	const bool game = !strncmp(tid, "ADA", 3) || !strncmp(tid, "APA", 3) || !strncmp(tid, "CPU", 3)
 				   || !strncmp(tid, "IPK", 3) || !strncmp(tid, "IPG", 3);
-	return game && strchr("EPFDIS", tid[3]) != NULL && tid[3] != 0;
+	return game && strchr("EPFDISJK", tid[3]) != NULL && tid[3] != 0;
 }
 
 inline bool fileSize(const std::string& path, off_t* size) {

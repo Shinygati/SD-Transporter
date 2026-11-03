@@ -5,6 +5,8 @@
 #include "syncnet.h"
 #include "ui.h"
 #include "walkerfile.h"
+#include "species.h"
+#include "backups.h"
 #include <3ds.h>
 #include <dirent.h>
 #include <errno.h>
@@ -26,6 +28,8 @@
 #define MAX_WALKERS 128
 #define MAX_DIRS 1024
 static UIState ui;
+static char recoveryPaths[MAX_WALKERS][512], backupTarget[512];
+static int recoveryCount;
 static char paths[MAX_WALKERS][512], folders[MAX_DIRS][512];
 static uint8_t statuses[MAX_WALKERS], ee[WALKER_FILE_SIZE],
     scratch[WALKER_FILE_SIZE];
@@ -169,6 +173,8 @@ static int save(void) {
     return saveFailure("Walker verification", EIO);
   if (sdRenameReplace(temp, p, &nativeFsError))
     return saveFailure("Replacing walker file", errno);
+  if (!readFile(p, scratch) || memcmp(scratch, ee, sizeof(ee)))
+    return saveFailure("Published walker verification", EIO);
   diskCrc = walkerCrc(ee, sizeof(ee));
   dirty = 0;
   ui.saveError = 0;
@@ -209,9 +215,12 @@ static int syncSteps(int show) {
     dirty = 1;
   if (!save())
     return 0;
+  refresh();
   if (show || report.events) {
-    if (!ui.info.hasPokemon)
-      notify("No Pokémon: steps and watts paused.");
+    if (report.joined)
+      notify("A wild Pokémon joined you!");
+    else if (!ui.info.hasPokemon)
+      notify("Walking solo. A wild Pokémon may join you.");
     else if (walkerPendingEncounter(ee))
       notify("A wild Pokémon is nearby! Choose the visitor tile.");
     else if (report.clockBehind)
@@ -304,8 +313,32 @@ static void result(const char *a, const char *b) {
   resultReturn = ui.phoneLocked ? UI_LOCKED : opened >= 0 ? UI_HOME : UI_LIST;
   deadline = osGetTime() + 250;
 }
+static void rememberOriginal(const char *path) {
+  for(int i=0;i<recoveryCount;i++)if(!strcmp(recoveryPaths[i],path))return;
+  if(recoveryCount<MAX_WALKERS)snprintf(recoveryPaths[recoveryCount++],512,"%.511s",path);
+}
+static __attribute__((noinline)) void rememberRecovery(const char *path) {
+  const char *suffixes[]={".walker.tmp",".walker.bak",".walker.bak.tmp",".walker.replace-old"};
+  for(unsigned i=0;i<4;i++)if(ends(path,suffixes[i])) {
+    char original[512];size_t length=strlen(path)-strlen(suffixes[i])+7;
+    if(length<sizeof(original)){memcpy(original,path,length);original[length]=0;struct stat st;if(stat(original,&st)&&errno==ENOENT)rememberOriginal(original);}
+    break;
+  }
+  const char *folder=strstr(path,"/transfers/backups/");
+  if(!folder || !ends(path,".bak"))return;
+  const char *base=folder+19,*part=0;
+  for(const char *p=base;*p;p++)if(!strncasecmp(p,".walker.",8))part=p;
+  if(!part)return;
+  const char *kind=part+8;
+  if(strncmp(kind,"prelaunch-",10)&&strncmp(kind,"checkout-",9)&&strncmp(kind,"return-",7)&&strncmp(kind,"recovery-",9)&&strncmp(kind,"conflict-",9)&&strncmp(kind,"deleted-",8)&&strncmp(kind,"reward-",7))return;
+  char original[512];
+  if(snprintf(original,sizeof(original),"%.*s%.*s",(int)(folder-path+1),path,(int)(part-base+7),base)>=(int)sizeof(original))return;
+  for(int i=0;i<recoveryCount;i++)if(!strcmp(recoveryPaths[i],original))return;
+  if(recoveryCount<MAX_WALKERS)snprintf(recoveryPaths[recoveryCount++],512,"%s",original);
+}
 static void scanBegin(void) {
   syncStop();
+  recoveryCount=0;
   if (directory) {
     closedir(directory);
     directory = 0;
@@ -365,6 +398,8 @@ static void scanStep(void) {
           snprintf(folders[folderCount++], 512, "%s", path);
         else
           ui.scanLimited = 1;
+      } else if(S_ISREG(st.st_mode) && (ends(e->d_name,".bak") || ends(e->d_name,".tmp") || ends(e->d_name,".replace-old"))) {
+        rememberRecovery(path);
       } else if (S_ISREG(st.st_mode) && ends(e->d_name, ".walker")) {
         if (ui.count < MAX_WALKERS)
           snprintf(paths[ui.count++], 512, "%s", path);
@@ -378,7 +413,7 @@ static void scanStep(void) {
       statuses[validateIndex] =
           leaseInspect(paths[validateIndex], 0) ? 3
           : readFile(paths[validateIndex], scratch) && walkerRead(scratch, &i)
-              ? (i.registered && i.hasPokemon ? 1 : 2)
+              ? (walkerCanWalk(scratch) ? 1 : 2)
               : 0;
       validateIndex++;
       ui.done = validateIndex;
@@ -411,10 +446,10 @@ static void openWalker(void) {
            "It must be exactly 64 KiB with valid mirrored records.");
     return;
   }
-  if (!ui.info.registered || !ui.info.hasPokemon) {
-    result("No Pokémon on this walker.",
-           "Send a Pokémon from HGSS first. Empty walkers cannot "
-           "be opened or earn steps and watts.");
+  if (!walkerCanWalk(ee)) {
+    result("This walker is not ready.",
+           "Register it with HGSS first. A valid uploaded course is "
+           "needed for an empty walker to find a companion.");
     return;
   }
   opened = ui.cursor;
@@ -430,7 +465,8 @@ static void openWalker(void) {
   lastAdvance = lastSync = now();
   rebaseSensor();
   refresh();
-  notify(ui.walkingEnabled ? "Walking started. Sleep counts too."
+  notify(!ui.info.hasPokemon ? "Walking solo. A wild Pokémon may join."
+         : ui.walkingEnabled ? "Walking started. Sleep counts too."
                            : "Step counter is paused.");
 }
 static int replaceForLease(const char *a, const char *b) {
@@ -456,10 +492,11 @@ static void onPhoneEvent(int event) {
   if (event == 1) {
     ui.phoneLocked = 1;
     dirty = 0;
-    ui.pending = 0;
+    ui.pending = ui.pendingEncounter = 0;
+    ui.loaded=0;memset(&ui.info,0,sizeof(ui.info));memset(ee,0xff,sizeof(ee));
   }
   if (event == 2)
-    transferredBack("Returned from Android. Walker unlocked.");
+    transferredBack("Returned from phone. Walker unlocked.");
 }
 static void startPhoneSync(void) {
   if (opened < 0)
@@ -473,7 +510,7 @@ static void startPhoneSync(void) {
 }
 static void endGame(const char *a, const char *b) {
   dirty = 1;
-  save();
+  if (!save()) { refresh(); return; }
   refresh();
   result(a, b);
 }
@@ -485,7 +522,7 @@ static int ready(void) {
   refresh();
   if (!ui.info.registered || !ui.info.hasPokemon) {
     result("Send a Pokémon first.",
-           "Use HGSS's Pokéwalker menu to begin a stroll.");
+           "Keep walking until a Pokémon joins, or send one from HGSS.");
     return 0;
   }
   if (ee[0x156 + 23] & 1) {
@@ -578,12 +615,17 @@ static void rewardStore(int kind, unsigned which) {
     ui.replaceKind = kind;
     ui.selection = 0;
     ui.screen = UI_REPLACE;
-    message("Choose a slot to replace, or B to leave it.");
+    char text[160];
+    snprintf(text,sizeof(text),kind?"Found %s. Choose a slot, or B to leave it.":"Caught %s! Choose a slot, or B to leave it.",kind?itemName(walkerRouteItemId(ee,which)):speciesName(walkerRoutePokemonId(ee,which)));
+    message(text);
     return;
   }
   if (ok) {
-    endGame(kind ? "An item was found!" : "You caught the Pokémon!",
-            "It's in your pack, ready to return to HGSS.");
+    if (!backupsPreserveReward(paths[opened],ee)) { saveFailure("Preserving caught reward", EIO); refresh(); return; }
+    char title[96];
+    snprintf(title,sizeof(title),kind?"You found %s!":"You caught %s!",
+             kind?itemName(walkerRouteItemId(ee,which)):speciesName(walkerRoutePokemonId(ee,which)));
+    endGame(title,"Saved to card. It is in your pack, ready for HGSS.");
   } else
     endGame("The reward data was not usable.", "No Pokémon or item was added.");
 }
@@ -763,7 +805,112 @@ static void back(void) {
   ui.selection = 0;
   refresh();
 }
+static int backupReturnScreen;
+static void refreshBackups(void) {
+  ui.backupCount=backupsCount();ui.backupLimited=backupsLimited();
+  if(ui.backupIndex>=ui.backupCount)ui.backupIndex=ui.backupCount?ui.backupCount-1:0;
+  ui.selection=ui.backupIndex;
+  snprintf(ui.backupWalker,sizeof(ui.backupWalker),"%.*s",(int)sizeof(ui.backupWalker)-1,nameOf(backupTarget));
+  ui.backupName[0]=ui.backupDetail[0]=0;
+  if(ui.backupCount && !backupsDescribe(ui.backupIndex,ui.backupName,sizeof(ui.backupName),ui.backupDetail,sizeof(ui.backupDetail)))
+    snprintf(ui.backupDetail,sizeof(ui.backupDetail),"This snapshot could not be read.");
+  snprintf(ui.message,sizeof(ui.message),"%s",ui.backupName);
+}
+static void openBackups(void) {
+  if(opened<0)return;
+  if(syncBusy()){notify("Wait for the transfer to finish first.");return;}
+  if(!ui.phoneLocked && !syncSteps(0))return;
+  backupReturnScreen=ui.phoneLocked?UI_LOCKED:UI_SETTINGS;
+  syncStop();snprintf(backupTarget,sizeof(backupTarget),"%s",paths[opened]);backupsScan(backupTarget);ui.backupIndex=0;refreshBackups();ui.screen=UI_BACKUPS;
+}
+static void openGlobalBackups(void) {
+  if(!recoveryCount){notify("No recovery snapshots found under /roms.");return;}
+  if(syncBusy()){notify("Wait for sync to finish first.");return;}
+  backupReturnScreen=UI_LIST;syncStop();
+  snprintf(backupTarget,sizeof(backupTarget),"%s",recoveryPaths[0]);
+  backupsScan(backupTarget);ui.backupIndex=0;refreshBackups();ui.screen=UI_BACKUPS;
+}
+static void backupNotice(const char *text) {
+  backupsScan(backupTarget);ui.backupIndex=0;refreshBackups();result("Recovery",text);resultReturn=UI_BACKUPS;
+}
+static int backupInput(u32 down) {
+  if(ui.screen!=UI_BACKUPS && ui.screen!=UI_BACKUP_DELETE && ui.screen!=UI_DELETE_ACTIVE && ui.screen!=UI_RECOVER_SAVE && ui.screen!=UI_RESTORE_BACKUP)return 0;
+  if((down & KEY_B) && ui.screen==UI_RECOVER_SAVE){backupsScan(backupTarget);ui.backupIndex=0;refreshBackups();ui.screen=UI_BACKUPS;return 1;}
+  if(down & KEY_B){int browsing=ui.screen==UI_BACKUPS;ui.screen=browsing?backupReturnScreen:UI_BACKUPS;if(browsing)ui.selection=0;return 1;}
+  if(ui.screen==UI_RESTORE_BACKUP) {
+    if(down & KEY_A) {
+      if(opened>=0 && !ui.phoneLocked && ui.loaded && !syncSteps(0))return 1;
+      if(!backupsLoad(ui.backupIndex,scratch)){backupNotice("This recovery copy could not be read.");return 1;}
+      int lock=leaseInspect(backupTarget,0);char error[192],key[37];
+      if(lock<0){backupNotice("Phone lock is damaged. Preserve the files for recovery.");return 1;}
+      if(lock) {
+        if(!walkerTrainerKey(scratch,key)||!leaseMatchesTrainer(backupTarget,key)){backupNotice("Trainer name or ID differs. Restore refused.");return 1;}
+        if(!leaseForceUnlock(backupTarget,error,sizeof(error))){backupNotice(error);return 1;}
+        if(opened>=0&&!strcmp(paths[opened],backupTarget)){ui.phoneLocked=0;load(opened);dirty=0;}
+      }
+      if(!backupsRestoreImage(backupTarget,scratch,replaceForLease)){backupNotice("Restore failed. Existing recovery copies kept.");return 1;}
+      dirty=0;ui.saveError=ui.phoneLocked=0;opened=-1;scanBegin();notify("Backup restored. Open it from the walker list.");
+    }
+    return 1;
+  }
+  if(ui.screen==UI_RECOVER_SAVE) {
+    int count=backupsInterruptedCount(backupTarget);
+    if((down & (KEY_LEFT|KEY_L)) && ui.backupIndex>0)ui.backupIndex--;
+    if((down & (KEY_RIGHT|KEY_R)) && ui.backupIndex+1<count)ui.backupIndex++;
+    backupsInterruptedDescribe(backupTarget,ui.backupIndex,ui.backupName,sizeof(ui.backupName),ui.backupDetail,sizeof(ui.backupDetail));
+    if(down & KEY_A) {
+      if(backupsRestoreInterrupted(backupTarget,ui.backupIndex)){scanBegin();notify("File recovered. Open it from the list.");}
+      else notify("Recovery refused. Original copies kept.");
+    }
+    return 1;
+  }
+  if((down & KEY_START) && ui.backupCount){ui.screen=UI_RESTORE_BACKUP;return 1;}
+  if(down & (KEY_START|KEY_SELECT)) {
+    int count=backupsInterruptedCount(backupTarget);
+    if(!count){backupNotice("No missing-file recovery is available. Use START on a selected history snapshot to restore it.");return 1;}
+    ui.backupIndex=0;ui.backupCount=count;
+    backupsInterruptedDescribe(backupTarget,0,ui.backupName,sizeof(ui.backupName),ui.backupDetail,sizeof(ui.backupDetail));
+    ui.screen=UI_RECOVER_SAVE;return 1;
+  }
+  if(ui.screen==UI_DELETE_ACTIVE) {
+    if(down & KEY_A) {
+      char error[192];const char *path=backupTarget;
+      int current=opened>=0 && !strcmp(paths[opened],path);
+      unsigned char *data=current?ee:scratch;
+      if((current && ui.phoneLocked) || leaseInspect(path,0)) {
+        if(!leaseForceUnlock(path,error,sizeof(error))){notify(error);return 1;}
+        if(current)ui.phoneLocked=0;
+        if(!readFile(path,data)){notify("Could not read recovered walker. Deletion stopped.");return 1;}
+      } else if(!current && !readFile(path,data)) {notify("No active file exists for this recovery history.");return 1;}
+      if(!backupsPreserveActive(path,data)){notify("Could not preserve recovery copy. Deletion stopped.");return 1;}
+      if(remove(path)){notify("Could not delete active walker. Recovery copy kept.");return 1;}
+      if(current || opened<0){opened=-1;dirty=0;ui.loaded=ui.phoneLocked=0;scanBegin();}
+      else {backupsScan(backupTarget);refreshBackups();ui.screen=UI_BACKUPS;}
+      notify("Active walker deleted. Recovery copy kept.");
+    }
+    return 1;
+  }
+  if(ui.screen==UI_BACKUP_DELETE) {
+    if(down & KEY_A){if(!backupsDelete(ui.backupIndex))notify("Could not delete this recovery copy.");backupsScan(backupTarget);refreshBackups();ui.screen=UI_BACKUPS;}
+    return 1;
+  }
+  if((down & KEY_Y) && recoveryCount) {
+    int index=-1;for(int i=0;i<recoveryCount;i++)if(!strcmp(recoveryPaths[i],backupTarget))index=i;
+    snprintf(backupTarget,sizeof(backupTarget),"%.511s",recoveryPaths[(index+1)%recoveryCount]);
+    backupsScan(backupTarget);ui.backupIndex=0;refreshBackups();return 1;
+  }
+  int before=ui.backupIndex;
+  if((down & (KEY_UP|KEY_LEFT|KEY_L)) && ui.backupIndex>0)ui.backupIndex--;
+  if((down & (KEY_DOWN|KEY_RIGHT|KEY_R)) && ui.backupIndex+1<ui.backupCount)ui.backupIndex++;
+  if(before!=ui.backupIndex)refreshBackups();
+  if(down & KEY_TOUCH){touchPosition touch;hidTouchRead(&touch);if(touch.py>=150 && touch.py<178)down|=KEY_A;else if(touch.py>=181 && touch.py<208)down|=KEY_X;}
+  if((down & KEY_A) && ui.backupCount)ui.screen=UI_BACKUP_DELETE;
+  if(down & KEY_X)ui.screen=UI_DELETE_ACTIVE;
+  return 1;
+}
 static void input(u32 down) {
+  if(backupInput(down))return;
+  if(ui.screen==UI_LIST && (down & KEY_SELECT)){openGlobalBackups();return;}
   if (down & KEY_Y) {
     if (ui.saveError) {
       if (save()) {
@@ -794,7 +941,7 @@ static void input(u32 down) {
       ui.discardPrompt = 0;
       dirty = 0;
       ui.saveError = 0;
-      if (!load(opened) || !ui.info.hasPokemon)
+      if (!load(opened) || !walkerCanWalk(ee))
         scanBegin();
       else {
         walkerResume(ee, now(), ui.secondsPerStep);
@@ -811,6 +958,7 @@ static void input(u32 down) {
       ui.screen != UI_FORCE && ui.screen != UI_RESULT)
     ui.screen = UI_LOCKED;
   if (ui.screen == UI_LOCKED) {
+    if(down & KEY_R){openBackups();return;}
     if (down & KEY_A)
       startPhoneSync();
     if (down & KEY_X)
@@ -926,6 +1074,8 @@ static void input(u32 down) {
     if (down & KEY_A)
       homeAction();
   } else if (ui.screen == UI_SETTINGS) {
+    if(down & KEY_X){openBackups();return;}
+    if(down & KEY_TOUCH){touchPosition touch;hidTouchRead(&touch);if(touch.py>=198 && touch.py<219){openBackups();return;}}
     if ((down & KEY_UP) && ui.selection > 0)
       ui.selection--;
     if ((down & KEY_DOWN) && ui.selection < 3)
@@ -997,15 +1147,15 @@ static void input(u32 down) {
     if (down & KEY_A)
       battleAction();
   } else if (ui.screen == UI_REPLACE) {
-    if ((down & KEY_LEFT) && ui.selection > 0)
+    if ((down & (KEY_LEFT|KEY_UP)) && ui.selection > 0)
       ui.selection--;
-    if ((down & KEY_RIGHT) && ui.selection < 2)
+    if ((down & (KEY_RIGHT|KEY_DOWN)) && ui.selection < 2)
       ui.selection++;
     if (down & KEY_TOUCH) {
       touchPosition p;
       hidTouchRead(&p);
-      if (p.py >= 53 && p.py < 107) {
-        ui.selection = p.px / 103;
+      if (p.py >= 48 && p.py < 174) {
+        ui.selection = (p.py-48) / 44;
         if (ui.selection > 2)
           ui.selection = 2;
         down |= KEY_A;
@@ -1015,10 +1165,16 @@ static void input(u32 down) {
       int ok = pendingKind
                    ? walkerStoreItem(ee, reward, ui.selection, now())
                    : walkerStorePokemon(ee, reward, ui.selection, now());
+      int kind=pendingKind;
       pendingKind = -1;
-      if (ok > 0)
-        endGame("Your pack was updated.",
-                "The new reward replaced your selected slot.");
+      if (ok > 0) {
+        dirty=1;
+        if (!backupsPreserveReward(paths[opened],ee)) { saveFailure("Preserving caught reward", EIO); refresh(); return; }
+        char title[96];
+        snprintf(title,sizeof(title),kind?"You found %s!":"You caught %s!",
+                 kind?itemName(walkerRouteItemId(ee,reward)):speciesName(walkerRoutePokemonId(ee,reward)));
+        endGame(title,"The new reward replaced your selected slot.");
+      }
     }
   }
 }
@@ -1080,7 +1236,9 @@ int main(void) {
         if (memcmp(scratch, ee, sizeof(ee)))
           dirty = 1;
         lastAdvance = stamp;
-        if (progress.encounters)
+        if (progress.joined)
+          notify("A wild Pokémon joined you!");
+        else if (progress.encounters)
           notify("A wild visitor is waiting!");
         else if (progress.items)
           notify("Your Pokémon found an item!");

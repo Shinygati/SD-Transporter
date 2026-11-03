@@ -18,6 +18,7 @@ typedef struct {
     uint32_t walkStart, lastCredited, totalSteps, todaySteps, elapsedHours, strollSteps;
     unsigned pokemonCount, itemCount, lastEvent, lastEventValue;
     uint32_t eventCount;
+    uint32_t trainerId;
 } WalkerInfo;
 typedef struct {
     uint32_t steps;
@@ -33,6 +34,11 @@ typedef struct {
     int lastOutcome;
 } WalkerBattle;
 int walkerRead(const uint8_t *, WalkerInfo *);
+/* Public Trainer ID plus canonical encoded trainer name, 36 lower-case hex chars. */
+int walkerTrainerKey(const uint8_t *, char out[37]);
+/* Registered empty walkers may walk when the uploaded course has a valid
+ * joining companion. Blank/unregistered and malformed occupied files may not. */
+int walkerCanWalk(const uint8_t *);
 uint32_t walkerPendingSteps(const uint8_t *, uint32_t, uint32_t);
 uint32_t walkerCredit(uint8_t *, uint32_t, uint32_t);
 int walkerAddSteps(uint8_t *, uint32_t, uint32_t, WalkerReport *);
@@ -51,5 +57,6 @@ void walkerBattleAction(uint8_t *, WalkerBattle *, int);
 unsigned walkerItemId(const uint8_t *, unsigned);
 unsigned walkerPokemonId(const uint8_t *, unsigned);
 unsigned walkerRoutePokemonId(const uint8_t *, unsigned);
+unsigned walkerRouteItemId(const uint8_t *, unsigned);
 uint32_t walkerCrc(const uint8_t *, unsigned);
 #endif

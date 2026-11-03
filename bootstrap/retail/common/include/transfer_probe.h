@@ -6,7 +6,16 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "transfer_probe_payload.h"
+#ifdef GEN5_RECOGNIZER_ONLY
+#include "gen5_client_identities.h"
+typedef Gen5ClientIdentity Gen5ProbeIdentity;
+#define GEN5_PROBE_PROFILES gen5ClientIdentities
+#define GEN5_PROBE_COUNT GEN5_CLIENT_IDENTITY_COUNT
+#else
 #include "gen5_client_profiles.h"
+typedef Gen5ClientProfile Gen5ProbeIdentity;
+#define GEN5_PROBE_COUNT GEN5_CLIENT_PROFILE_COUNT
+#endif
 
 static inline uint32_t transferProbeCRC(const unsigned char *p,uint32_t n) {
  static const uint32_t nibble[16]={0,0x1db71064,0x3b6e20c8,0x26d930ac,0x76dc4190,0x6b6b51f4,0x4db26158,0x5005713c,0xedb88320,0xf00f9344,0xd6d6a3e8,0xcb61b38c,0x9b64c2b0,0x86d3d2d4,0xa00ae278,0xbdbdf21c};
@@ -19,15 +28,21 @@ static inline bool transferProbeRecognize(const void *header,uint32_t length) {
  if(w[0x38/4]!=0x02380000 || w[0x34/4]!=0x02380000)return false;
  // MB can omit the title/game code. Verify the complete decompressed code
  // and SDK module layout instead, before any generic patch changes it.
- for(uint32_t i=0;i<GEN5_CLIENT_PROFILE_COUNT;i++) {
-  const Gen5ClientProfile *p=&gen5ClientProfiles[i];
+ for(uint32_t i=0;i<GEN5_PROBE_COUNT;i++) {
+#ifdef GEN5_RECOGNIZER_ONLY
+  const Gen5ProbeIdentity *p=&GEN5_PROBE_PROFILES[i];
+#else
+  Gen5ProbeIdentity candidate;
+  if(!gen5ReadProfile(i,&candidate))return false;
+  const Gen5ProbeIdentity *p=&candidate;
+#endif
   if(length!=p->length || w[0x28/4]!=p->base || w[0x24/4]!=p->entry)continue;
   // BW's retail client is DSi-enhanced; MB may reconstruct an NTR header.
   if(h[0x12]!=0 && !(p->base==0x02004000 && h[0x12]==2))return false;
   const uint32_t *m=(const uint32_t*)(p->base+p->module);
   if(m[3]!=p->bssStart || m[4]!=p->originalArena || m[5]!=0 ||
-     m[6]!=p->sdk || m[7]!=0xdec00621 || m[8]!=0x2106c0de)return false;
-  return transferProbeCRC((const unsigned char*)(p->base+0x800),length-0x800)==p->codeCRC;
+     m[6]!=p->sdk || m[7]!=0xdec00621 || m[8]!=0x2106c0de)continue;
+  if(transferProbeCRC((const unsigned char*)(p->base+0x800),length-0x800)==p->codeCRC)return true;
  }
  return false;
 }

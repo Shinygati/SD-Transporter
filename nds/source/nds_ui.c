@@ -34,7 +34,9 @@ int ndsUiInit(void) {
   fontPixels = (const uint8_t *)f.gfx;
   fontOffset = f.asciiOffset;
   fontCount = f.numChars;
-  storage = fatInitDefault();
+  /* libdvm write-back flush has no error result. Disable that cache so
+   * writes and read-back checks reach DLDI media before a handoff ACK. */
+  storage = fatInit(0, true);
 #else
   static uint8_t pixels[2048];
   FILE *f = fopen(getenv("NDS_PREVIEW_FONT"), "rb");

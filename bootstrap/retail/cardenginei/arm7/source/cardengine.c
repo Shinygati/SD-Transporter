@@ -460,7 +460,7 @@ static bool cardReadRAM(u8* dst, u32 src, u32 len/*, int romPartNo*/) {
 	return true;
 }
 
-void reset(const bool downloadedSrl) {
+__attribute__((optimize("Os"))) void reset(const bool downloadedSrl) {
 	register int i, reg;
 
 #ifndef TWLSDK

@@ -2,3 +2,5 @@
 #define SPECIES_H
 const char *speciesName(unsigned id);
 #endif
+
+const char *itemName(unsigned id);

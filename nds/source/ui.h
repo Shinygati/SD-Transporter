@@ -16,7 +16,8 @@ enum {
     UI_SYNC,
     UI_LOCKED,
     UI_FORCE,
-    UI_WIFI
+    UI_WIFI,
+    UI_BACKUPS, UI_BACKUP_DELETE, UI_DELETE_ACTIVE, UI_RECOVER_SAVE, UI_RESTORE_BACKUP
 };
 typedef struct {
     int screen, cursor, count, page, selection, selectedPatch, activePatch, attempts, round, rounds;
@@ -38,6 +39,8 @@ typedef struct {
     unsigned char wifiSecurity[32];
     char wifiSsid[33];
     int wifiTextPage;
+    int backupIndex, backupCount, backupLimited;
+    char backupName[160], backupDetail[96], backupWalker[160];
 } UIState;
 int uiInit(void);
 void uiExit(void);

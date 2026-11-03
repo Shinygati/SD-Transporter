@@ -364,6 +364,15 @@ void uiTop(const UIState *s) {
         label(214, 128, .35f, MUTED, "Start one in HGSS first.", 165);
         return;
     }
+    if(s->screen==UI_LIST && s->loaded) {
+        device(s);
+        label(214,65,.48f,TEAL,"TRAINER",165);
+        label(214,91,.55f,INK,s->info.registered&&s->info.trainer[0]?s->info.trainer:"Unavailable",165);
+        if(s->info.registered)fmt(214,124,.48f,GOLD,165,"ID %05lu",(unsigned long)s->info.trainerId);
+        else label(214,124,.44f,GOLD,"ID unavailable",165);
+        label(214,158,.46f,INK,s->info.hasPokemon?speciesName(s->info.species):"No companion",165);
+        label(24,216,.4f,MUTED,s->filename,350);return;
+    }
     infoTop(s);
     if (s->screen == UI_BATTLE) {
         roundbox(211, 57, 170, 116, 10, PANEL);
@@ -466,13 +475,44 @@ void uiBottom(const UIState *s) {
         }
         if (s->scanLimited)
             label(16, 212, .55f, GOLD, "Search limit reached", 288);
-        label(16, 223, .55f, INK, "A Open  X Scan  START Exit", 288);
+        label(16, 223, .55f, INK, "A Open  X Scan  SELECT Recovery", 288);
+        return;
+    }
+    if(s->screen==UI_RESTORE_BACKUP) {
+        label(17,12,.6f,INK,"Restore selected backup?",290);
+        paragraph(20,48,.5f,INK,"Current progress is backed up first. Any phone handoff is revoked. Restoring old data can duplicate Pokémon already received in HGSS.",280,6,19);
+        paragraph(20,168,.43f,GOLD,s->backupName,280,2,18);
+        label(17,220,.48f,INK,"A Restore backup   B Cancel",290);return;
+    }
+    if(s->screen==UI_RECOVER_SAVE) {
+        label(17,12,.6f,INK,"Recover interrupted save?",290);
+        paragraph(20,48,.5f,INK,"The final walker is missing. Choose a verified file to restore. The originals are kept.",280,3,19);
+        paragraph(20,109,.48f,GOLD,s->backupName,280,2,18);
+        paragraph(20,153,.48f,INK,s->backupDetail,280,2,18);
+        label(17,220,.43f,INK,"L/R File  A Recover  B Cancel",290);return;
+    }
+    if(s->screen==UI_BACKUPS || s->screen==UI_BACKUP_DELETE || s->screen==UI_DELETE_ACTIVE) {
+        int active=s->screen==UI_DELETE_ACTIVE,confirm=s->screen!=UI_BACKUPS;
+        label(17,12,.6f,INK,active?"Delete active walker?":confirm?"Delete recovery copy?":"Recovery copies",290);
+        if(confirm) {
+            paragraph(20,50,.55f,INK,active?"Remove this device's active walker? A recovery copy is preserved first. Any phone handoff on this console is revoked.":"Permanently delete this recovery snapshot? The active walker and ownership records stay intact.",280,5,21);
+            paragraph(20,161,.42f,GOLD,active?s->backupWalker:s->backupName,280,2,18);
+            label(17,220,.55f,INK,"A Confirm delete    B Cancel",290);
+        } else {
+            fmt(20,44,.5f,TEAL,280,"%d / %d copies%s",s->backupCount?s->backupIndex+1:0,s->backupCount,s->backupLimited?" (first 128)":"");
+            paragraph(20,68,.4f,INK,s->backupCount?s->backupName:"No recovery snapshots yet.",280,2,18);
+            paragraph(20,100,.5f,MUTED,s->backupDetail,280,2,18);
+            label(20,136,.4f,TEAL,"START Restore  SELECT Missing file",280);
+              roundbox(12,150,296,27,7,PANEL);label(22,155,.5f,INK,"A Delete selected backup",275);
+            roundbox(12,181,296,27,7,PANEL);label(22,186,.5f,GOLD,"X Delete active walker",275);
+            label(17,222,.48f,INK,"L/R Copy   Y Walker   B Back",290);
+        }
         return;
     }
     if (s->screen == UI_SYNC) {
-        label(17, 12, .65f, INK, "Android Wi-Fi sync", 290);
+        label(17, 12, .65f, INK, "Phone Wi-Fi sync", 290);
         fmt(20, 48, .6f, TEAL, 280, "%s:30820", s->syncAddress);
-        label(20, 77, .55f, GOLD, "Enter this IP on Android.", 280);
+        label(20, 77, .55f, GOLD, "Enter this IP on your phone.", 280);
         paragraph(20, 110, .55f, INK, s->syncStatus, 280, 3, 20);
         paragraph(20, 174, .55f, MUTED, "Keep both devices on the same local Wi-Fi.", 280, 2, 18);
         label(17, 221, .55f, INK, s->phoneLocked ? "B Back  X Force unlock" : "B Back  START Exit",
@@ -481,15 +521,15 @@ void uiBottom(const UIState *s) {
     }
     if (s->screen == UI_LOCKED || s->screen == UI_FORCE) {
         int force = s->screen == UI_FORCE;
-        label(17, 12, .65f, INK, force ? "Force unlock?" : "Walker is on Android", 290);
+        label(17, 12, .65f, INK, force ? "Force unlock?" : "Walker is on phone", 290);
         paragraph(20, 53, .55f, INK,
-                  force ? "Restore the console snapshot? Phone progress will be discarded. The old "
-                          "Android session can no longer sync back until a fresh handoff."
-                        : "Console loading is locked while Android owns this walker. Return it "
+                  force ? "Restore the console snapshot? Recovery copies are kept. The old "
+                          "phone session can no longer sync back until a fresh handoff."
+                        : "Console loading is locked while a phone owns this walker. Return it "
                           "over Wi-Fi, or recover the local snapshot if the phone is unavailable.",
                   280, 7, 20);
         label(17, 218, .55f, GOLD,
-              force ? "A Restore and revoke  B Cancel" : "A Sync  X Recover  B Back", 287);
+              force ? "A Restore and revoke  B Cancel" : "A Sync  X Recover  R Backups  B Back", 287);
         return;
     }
     const char *heading = s->screen == UI_HOME       ? "A little adventure"
@@ -499,7 +539,7 @@ void uiBottom(const UIState *s) {
                           : s->screen == UI_PACK     ? "Pokémon & items"
                           : s->screen == UI_REPLACE  ? "Pack full — choose a slot"
                           : s->screen == UI_CARD     ? "Trainer card"
-                          : s->screen == UI_SETTINGS ? "Stroll settings"
+                          : s->screen == UI_SETTINGS ? "Settings 1.4-test"
                                                      : "Adventure journal";
     label(17, 12, .52f, INK, heading, 290);
     if (s->screen == UI_HOME) {
@@ -540,31 +580,29 @@ void uiBottom(const UIState *s) {
         paragraph(20, 141, .55f, INK, "Lower HP makes catching easier.", 280, 2, 18);
         status(s);
     } else if (s->screen == UI_PACK || s->screen == UI_REPLACE) {
-        for (int i = 0; i < 3; i++) {
-            char t[40];
-            unsigned id = s->replaceKind ? walkerItemId(s->ee, i) : walkerPokemonId(s->ee, i);
-            if (s->screen == UI_PACK)
-                id = walkerPokemonId(s->ee, i);
-            snprintf(t, sizeof(t), id && id != 65535 ? "#%u" : "Empty", id);
-            tile(12 + i * 103, 53, 96, 54, t,
-                 s->screen == UI_REPLACE && s->replaceKind ? "item slot" : "Pokémon",
-                 s->screen == UI_REPLACE && i == s->selection, TEAL);
+        int replace=s->screen==UI_REPLACE;
+        for(int i=0;i<3;i++) {
+            unsigned id=replace&&s->replaceKind?walkerItemId(s->ee,i):walkerPokemonId(s->ee,i);
+            const char *name=replace&&s->replaceKind?itemName(id):(id&&id!=65535?speciesName(id):"Empty");
+            int y=replace?48+i*44:42+i*26;
+            roundbox(12,y,296,replace?38:24,6,replace&&s->selection==i?RGB(34,87,86):PANEL);
+            label(22,y+3,.55f,INK,name,replace?270:205);
+            if(replace)fmt(22,y+23,.38f,TEAL,270,"Replace slot %d",i+1);
+            else label(239,y+5,.4f,TEAL,"Pokémon",60);
         }
-        if (s->screen == UI_PACK)
-            for (int i = 0; i < 3; i++) {
-                char t[30];
-                unsigned id = walkerItemId(s->ee, i);
-                snprintf(t, sizeof(t), id && id != 65535 ? "Item #%u" : "Empty", id);
-                tile(12 + i * 103, 123, 96, 54, t, "item", 0, GOLD);
+        if(!replace) {
+            for(int i=0;i<3;i++) {
+                int y=134+i*26;
+                roundbox(12,y,296,24,6,PANEL);
+                label(22,y+3,.55f,INK,itemName(walkerItemId(s->ee,i)),210);
+                label(260,y+5,.4f,GOLD,"Item",38);
             }
-        else
-            paragraph(18, 132, .55f, INK, "A Replace selected slot. B Leave new reward.", 286, 2,
-                      20);
-        status(s);
+        } else status(s);
     } else if (s->screen == UI_CARD) {
         fmt(20, 52, .53f, INK, 280, "Trainer  %s",
             s->info.trainer[0] ? s->info.trainer : "Not registered");
-        fmt(20, 85, .55f, INK, 280, "%s · Lv %u", speciesName(s->info.species), s->info.level);
+        if(s->info.hasPokemon) fmt(20, 85, .55f, INK, 280, "%s · Lv %u", speciesName(s->info.species), s->info.level);
+        else label(20,85,.55f,INK,"Walking solo · a wild Pokémon may join",280);
         fmt(20, 112, .43f, MUTED, 280, "Bond  %u / 255", s->info.friendship);
         fmt(20, 139, .43f, MUTED, 280, "%u Pokémon   ·   %u items packed", s->info.pokemonCount,
             s->info.itemCount);
@@ -587,7 +625,8 @@ void uiBottom(const UIState *s) {
                       74);
         }
 
-        label(17, 197, .55f, TEAL, s->toast, 286);
+        roundbox(12,198,296,20,5,PANEL);
+        label(22,200,.5f,TEAL,"X Recovery copies / delete",280);
     } else if (s->screen == UI_RESULT) {
         roundbox(15, 43, 290, 168, 10, PANEL);
         paragraph(26, 49, .6f, INK, s->message, 268, 2, 21);

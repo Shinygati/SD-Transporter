@@ -38,22 +38,25 @@ for off in range(0,len(data),4):
 profiles=json.loads((ROOT/'retail/gen5-transfer/client_profiles.json').read_text())['profiles']
 hooks={'header':'gen5_header','header_alt':'gen5_header','rom_raw':'gen5_rom_raw','rom_read':'gen5_rom_read','backup_worker':'gen5_backup_worker','ack':'gen5_ack','id':'gen5_id','id_alt':'gen5_id','present':'gen5_present','noop':'gen5_noop','init':'gen5_noop','terminate':'gen5_noop','enabled':'gen5_enabled','card_init':'gen5_noop','pullout':'gen5_noop'}
 h='/* Generated original SD adapter; no retail executable bytes. */\n#ifndef GEN5_ADAPTER_PAYLOAD_H\n#define GEN5_ADAPTER_PAYLOAD_H\n'
-h+=f'#define GEN5_PAYLOAD_BASE 0x{BASE:08x}u\n#define GEN5_ARENA_LO 0x{arena:08x}u\n#define GEN5_LANGUAGE_OFFSET 0x{syms["gen5_language"]-BASE:x}u\n'
+h+=f'#define GEN5_PAYLOAD_BASE 0x{BASE:08x}u\n#define GEN5_ARENA_LO 0x{arena:08x}u\n#define GEN5_LANGUAGE_OFFSET 0x{syms["gen5_language"]-BASE:x}u\n#define GEN5_CLASSIFY_OFFSET 0x{syms["gen5_source_classify"]-BASE:x}u\n'
 h+='static const unsigned char gen5Payload[]={'+','.join(str(x) for x in data)+'};\n'
 h+='static const unsigned short gen5Relocations[]={'+','.join(hex(x) for x in relocations)+'};\n'
 legacy={profiles[0]['addresses'][name]:fn for name,fn in hooks.items()}
 h+='static const unsigned int gen5Hooks[][2]={'+','.join('{0x%xu,0x%xu}'%(a,syms[s]) for a,s in legacy.items())+'};\n'
 h+='#define GEN5_LANGUAGE_BL 0x%08xu\n#endif\n'%(0xeb000000|(((syms['gen5_language']-profiles[0]['addresses']['language']-8)//4)&0xffffff))
 (C/'gen5_adapter_payload.h').write_text(h)
-header='/* Verified English received-client metadata, no retail executable bytes. */\n#ifndef GEN5_CLIENT_PROFILES_H\n#define GEN5_CLIENT_PROFILES_H\n#include <stdint.h>\n'
-header+='typedef struct { uint32_t address, offset; } Gen5Hook;\n'
-header+='typedef struct { uint32_t base, entry, length, module, bssStart, payloadBase, codeCRC, sdk, constructor, constructorWord, heapPointer, language, heapPointerTwl, heapTwlOriginal, originalArena; Gen5Hook hooks[15]; } Gen5ClientProfile;\n'
-header+='static const Gen5ClientProfile gen5ClientProfiles[]={\n'
+from gen5_profile_codec import emit
+(C/'gen5_client_profiles.h').write_text(emit(profiles,hooks,syms,BASE))
+
+# Bootloaders only need compact identities; keep installer hooks out of their
+# limited VRAM/stack area as the regional profile count grows.
+identity='/* Generated verified regional client identities. */\n#ifndef GEN5_CLIENT_IDENTITIES_H\n#define GEN5_CLIENT_IDENTITIES_H\n#include <stdint.h>\n'
+identity+='typedef struct { uint32_t base,entry,length,module,bssStart,originalArena,sdk,codeCRC; } Gen5ClientIdentity;\nstatic const Gen5ClientIdentity gen5ClientIdentities[]={\n'
 for p in profiles:
- a=p['addresses']
- vals=[p[x] for x in ('base','entry','length','module','bss_start','payload_base','code_crc','sdk')]+[a['constructor'],p['constructor_word'],a['heap_pointer'],a['language'],a.get('heap_pointer_twl',0),p.get('heap_twl_original',0),p['original_arena']]
- header+=' /* '+p['key']+' */ { '+','.join('0x%xu'%v for v in vals)+', {'+','.join('{0x%xu,0x%xu}'%(a[n],syms[f]-BASE) for n,f in hooks.items())+'} },\n'
-header+='};\n#define GEN5_CLIENT_PROFILE_COUNT (sizeof(gen5ClientProfiles)/sizeof(gen5ClientProfiles[0]))\n#endif\n'
-(C/'gen5_client_profiles.h').write_text(header)
+ vals=[p[x] for x in ('base','entry','length','module','bss_start','original_arena','sdk','code_crc')]
+ identity+=' /* '+p['key']+' */ {'+','.join('0x%xu'%v for v in vals)+'},\n'
+identity+='};\n#define GEN5_CLIENT_IDENTITY_COUNT (sizeof(gen5ClientIdentities)/sizeof(gen5ClientIdentities[0]))\n#endif\n'
+(C/'gen5_client_identities.h').write_text(identity)
+
 (B/'symbols.json').write_text(json.dumps({'symbols':syms,'arena_lo':arena,'payload_base':BASE,'relocations':relocations,'hooks':{hex(a):s for a,s in legacy.items()},'hook_names':hooks,'payload_bytes':len(data),'profiles':profiles},indent=2)+'\n')
 print('SD adapter',len(data),'bytes;',len(relocations),'relocations;',len(profiles),'verified client layouts')

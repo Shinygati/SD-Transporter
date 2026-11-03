@@ -8,6 +8,7 @@
  <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false"/>
  <application android:allowBackup="false" android:label="Pokewalker" android:theme="@style/AppTheme" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:usesCleartextTraffic="true" android:enableOnBackInvokedCallback="false">
   <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+  <activity android:name=".PrivacyActivity" android:exported="false"/>
   <service android:name=".WalkingService" android:exported="false" android:foregroundServiceType="health|specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-enabled virtual Pokewalker time simulation"/></service>
  </application>
 </manifest>

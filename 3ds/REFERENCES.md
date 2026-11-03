@@ -20,3 +20,9 @@ Time stepping, sleep-session replay, PW3D metadata, free wandering encounters an
 
 - [Factual English species-name mapping](https://github.com/kwsch/PKHeX/blob/master/PKHeX.Core/Resources/text/other/en/text_Species_en.txt), National Dex 1–493.
 - [libctru rename implementation](https://github.com/devkitPro/libctru/blob/master/libctru/source/archive_dev.c): file replacement and FS error translation.
+
+- [HGSS English item-name bank](https://github.com/pret/pokeheartgold/blob/master/files/msgdata/msg/msg_0222.gmm), factual item ID/name mapping with original Gen IV spellings.
+
+- [libdvm write-back cache](https://github.com/devkitPro/libdvm/blob/master/source/dvm_cache.c) and [FAT driver](https://github.com/devkitPro/libdvm/blob/master/source/fat_driver.c): the NDS companion uses zero cache pages so verification reaches the underlying DLDI media interface.
+
+- [libctru archive timestamp API](https://github.com/devkitPro/libctru/blob/master/libctru/source/archive_dev.c): `archive_getmtime()` supplies UNIX seconds independently of `stat()`.

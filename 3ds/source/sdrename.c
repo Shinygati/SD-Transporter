@@ -29,7 +29,7 @@ static int path16(const char *input, uint16_t *out) {
     return 0;
 }
 int sdRenameReplace(const char *source, const char *destination, uint32_t *nativeError) {
-    uint16_t oldPath[544], newPath[544];
+    uint16_t oldPath[544], newPath[544], rollbackPath[544];
     FS_Archive archive;
     *nativeError = 0;
     /* Independent buffers: constructing the destination cannot change the source. */
@@ -43,9 +43,18 @@ int sdRenameReplace(const char *source, const char *destination, uint32_t *nativ
          * Do not fall back to RenameDirectory and mask that as ENOENT. The
          * caller verifies the replacement and backup before reaching here. */
         if (R_FAILED(rc) && (R_DESCRIPTION(rc) == RD_ALREADY_EXISTS || R_DESCRIPTION(rc) == 0xBE)) {
-            rc = FSUSER_DeleteFile(archive, to);
-            if (R_SUCCEEDED(rc))
-                rc = FSUSER_RenameFile(archive, from, archive, to);
+            size_t n=0;while(newPath[n])n++;
+            static const char suffix[]=".replace-old";
+            if(n+sizeof(suffix)>544) { FSUSER_CloseArchive(archive);errno=ENAMETOOLONG;return -1; }
+            memcpy(rollbackPath,newPath,n*sizeof(uint16_t));
+            for(size_t i=0;i<sizeof(suffix);i++)rollbackPath[n+i]=(unsigned char)suffix[i];
+            FS_Path rollback=fsMakePath(PATH_UTF16,rollbackPath);
+            rc=FSUSER_RenameFile(archive,to,archive,rollback);
+            if(R_SUCCEEDED(rc)) {
+                rc=FSUSER_RenameFile(archive,from,archive,to);
+                if(R_FAILED(rc))FSUSER_RenameFile(archive,rollback,archive,to);
+                else FSUSER_DeleteFile(archive,rollback);
+            }
         }
         FSUSER_CloseArchive(archive);
     }
