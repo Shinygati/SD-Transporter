@@ -4,6 +4,14 @@ SD Transporter adds virtual cartridge support to TWiLight Menu++ and nds-bootstr
 
 This is an independent homebrew project built on upstream open-source software. Game ROMs, saves, console firmware and retail Download Play applications are not distributed with the project.
 
+## Educational purpose, AI assistance and releases
+
+SD Transporter is an educational homebrew project developed with assistance from **OpenAI Codex** and **Anthropic Claude**. It is intended for learning, experimentation and studying virtual cartridge interfaces and Pokewalker communication.
+
+**No official releases or precompiled binaries will be published.** Users may compile the project from source using the instructions in this repository, subject to the applicable project and upstream licenses.
+
+AI assistance does not replace the authorship, credits or license requirements of the upstream projects and other contributors. Their notices and source attribution are retained in [CREDITS.md](CREDITS.md), the component licenses and individual source files.
+
 ## Features
 
 ### Virtual cartridges
@@ -75,9 +83,9 @@ The migration bypass currently targets USA Diamond/Pearl Rev 5 and USA Platinum 
 
 ## Installation
 
-Start with an existing working TWiLight Menu++ installation. Use matching SD Transporter release files; a source checkout does not include compiled releases.
+Start with an existing working TWiLight Menu++ installation. Compile the required SD Transporter components from source using [BUILDING-WINDOWS.md](BUILDING-WINDOWS.md) and the component build instructions. The following table describes where to install your compiled outputs.
 
-| Release file | Destination / action |
+| Build output | Destination / action |
 | --- | --- |
 | `dsimenu.srldr`, `r4menu.srldr`, `akmenu.srldr` | Copy to `sd:/_nds/TWiLightMenu/` |
 | `nds-bootstrap-nightly.nds` and `nightly-bootstrap.ver` | Copy both to `/_nds/` on the console SD or flashcart microSD; select **Nightly** for this build |
