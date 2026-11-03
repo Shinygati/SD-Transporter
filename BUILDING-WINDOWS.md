@@ -28,7 +28,7 @@ Use the **devkitPro MSYS2 shell** for these Makefiles. They invoke POSIX tools; 
 Prepare a separate r65 compiler and a legacy SDK directory containing `include/` and `lib/`. That SDK must contain libnds, compatible libfat, and both Maxmod libraries for the theme builds. Set paths to your own installations; the following are examples:
 
 ```sh
-cd /c/Users/YOUR_NAME/Documents/GitHub/SD-Transporter
+cd /c/Users/YOUR_NAME/.../SD-Transporter
 export REPO_ROOT="$PWD"
 export DEVKITPRO=/opt/devkitpro
 export COMPILER_DIR=/c/devkitPro-legacy/devkitARM
@@ -112,7 +112,7 @@ Build the themes sequentially: they share bootloader/bootstub staging inputs. `-
 Open a **fresh devkitPro MSYS2 shell** so the legacy compiler/rule overrides are not inherited. Use the current 3DS SDK:
 
 ```sh
-cd /c/Users/YOUR_NAME/Documents/GitHub/SD-Transporter
+cd /c/Users/YOUR_NAME/.../SD-Transporter
 export DEVKITPRO=/opt/devkitpro
 export DEVKITARM="$DEVKITPRO/devkitARM"
 export PATH="$DEVKITARM/bin:$DEVKITPRO/tools/bin:$PATH"
@@ -138,7 +138,7 @@ The original `banner.bin` is included. Optional regeneration uses bannertool via
 This application uses the **current Calico-based SDK**, not the legacy SDK above. The provided Python script can run directly in **PowerShell** after installing the current `nds-dev` package group:
 
 ```powershell
-Set-Location C:/Users/YOUR_NAME/Documents/GitHub/SD-Transporter
+Set-Location C:/Users/YOUR_NAME/.../SD-Transporter
 $env:DEVKITPRO = 'C:/devkitPro'
 $env:DEVKITARM = 'C:/devkitPro/devkitARM'
 python nds/build.py
@@ -157,7 +157,7 @@ The project specifies Android Gradle Plugin **9.1.1**. It has no bundled Gradle 
 In PowerShell, confirm the tools and configure your SDK path:
 
 ```powershell
-Set-Location C:/Users/YOUR_NAME/Documents/GitHub/SD-Transporter
+Set-Location C:/Users/YOUR_NAME/.../SD-Transporter
 java -version
 gradle --version
 $env:ANDROID_HOME = 'C:/Users/YOUR_NAME/AppData/Local/Android/Sdk'
