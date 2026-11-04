@@ -26,7 +26,7 @@ struct RewardView: View {
         return item ? WalkerCore.item(Int64(id)) : (id > 0 && id < 494 ? WalkerCore.species(Int64(id)) : "Empty")
     }
     private func store(_ slot: Int) {
-        result = model.command(item ? 4 : 3, Int32(((slot + 1) << 8) | choice))
+        result = model.command(item ? 10 : 3, Int32(((slot + 1) << (item ? 16 : 8)) | choice))
         updateMessage()
     }
     private func updateMessage() {
@@ -56,7 +56,8 @@ struct RadarView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                WalkerPicture(data: model.state.data, compact: phase < 2, battle: phase >= 2 ? battle : nil, action: visualAction, animationStart: animationStart, animating: animating, previousHP: previousHP).frame(height: phase >= 2 ? 300 : 210)
+                WalkerPicture(data: model.state.data, compact: phase < 2, battle: phase >= 2 ? battle : nil, action: visualAction, animationStart: animationStart, animating: animating, previousHP: previousHP).frame(height: 320)
+                WalkerDetailsView()
                 Text(message).font(.title3)
                 if phase < 2 {
                     TimelineView(.periodic(from: .now, by: 0.04)) { timeline in
@@ -81,7 +82,7 @@ struct RadarView: View {
     private func random(_ n: Int) -> Int { max(0, model.command(0)) % n }
     private func start() {
         started = true
-        guard model.usable else { phase = 3; message = "Receive an active walker first."; return }
+        guard model.usable else { phase = 3; message = "Receive a Pokémon from your console first."; return }
         let visitor = Int(model.info[11])
         if visitor > 0 { _ = model.command(5); encounter = visitor - 1; startBattle(); return }
         guard model.info[5] >= 10, let choice = model.encounter() else { phase = 3; message = "Radar needs 10 watts and usable route data."; return }

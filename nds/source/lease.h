@@ -15,6 +15,8 @@ int leaseSessionRevoked(const char *, const uint8_t token[16]);
 int leaseCheckout(const char *, const uint8_t token[16], uint8_t *, WalkerLease *, char *,
                   unsigned);
 int leaseReturn(const char *, const uint8_t token[16], const uint8_t *, char *, unsigned);
+/* Explicit recovery only; baseline is a user-selected original snapshot. */
+int leaseRecoverPhone(const char *,const uint8_t[16],const uint8_t *,const uint8_t *,char *,unsigned);
 int leaseForceUnlock(const char *, char *, unsigned);
 void leaseTokenText(const uint8_t *, char[33]);
 int leaseTokenParse(const char *, uint8_t[16]);

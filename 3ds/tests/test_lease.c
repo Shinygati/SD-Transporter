@@ -107,6 +107,36 @@ int main(void) {
  assert(!leaseReturn(p,token,ee,error,sizeof(error)));
  assert(leaseReturn(p,token,phone,error,sizeof(error))==1);sameContents(p,phone);
  assert(leaseReturn(p,token,phone,error,sizeof(error))==2);
+ /* Missing target after an old-build delete: normal revoked upload remains
+  * refused, but explicitly selected phone recovery can preserve that Pokemon. */
+ token[0]=21;makeStrolling(1,8000000);walkerResume(ee,8000000,10);fileWrite(p,ee,sizeof(ee));
+ assert(leaseCheckout(p,token,snapshot,&loan,error,sizeof(error)));memcpy(phone,snapshot,sizeof(phone));
+ assert(walkerAddSteps(phone,8000100,123,&report));
+ assert(leaseForceUnlock(p,error,sizeof(error)));assert(!remove(p));
+ assert(!leaseReturn(p,token,phone,error,sizeof(error)));assert(leaseSessionRevoked(p,token));
+ memcpy(ee,snapshot,sizeof(ee));ee[0xed+12]^=1;seal(0xed,0x1ed,104);memcpy(newer,ee,sizeof(newer));
+ assert(!leaseRecoverPhone(p,token,newer,snapshot,error,sizeof(error)));
+ assert(leaseRecoverPhone(p,token,phone,snapshot,error,sizeof(error))==1);sameContents(p,phone);
+ assert(leaseSessionRevoked(p,token)); /* Explicit recovery does not erase revocation. */
+ assert(leaseReturn(p,token,phone,error,sizeof(error))==2);sameContents(p,phone);
+ assert(leaseRecoverPhone(p,token,phone,snapshot,error,sizeof(error))==2);
+ assert(!remove(p));assert(!leaseReturn(p,token,phone,error,sizeof(error)));fileWrite(p,phone,sizeof(phone));
+ newToken[0]=22;assert(leaseCheckout(p,newToken,ee,&loan,error,sizeof(error)));
+ assert(!leaseRecoverPhone(p,token,phone,snapshot,error,sizeof(error)));assert(!leaseReturn(p,token,phone,error,sizeof(error)));
+ assert(leaseReturn(p,newToken,ee,error,sizeof(error)));sameContents(p,ee);
+ token[0]=23;makeStrolling(1,9000000);memcpy(newer,ee,sizeof(newer));fileWrite(p,newer,sizeof(newer));
+ assert(!leaseRecoverPhone(p,token,phone,snapshot,error,sizeof(error)));sameContents(p,newer);
+ /* No active file, receipt, sidecar or backup is required for an explicitly
+  * selected new destination. Never acknowledge a receipt-only missing file. */
+ char absent[600];snprintf(absent,sizeof(absent),"%s.missing.walker",p);
+ token[0]=31;makeStrolling(1,10000000);walkerResume(ee,10000000,10);
+ assert(stat(absent,&st)&&errno==ENOENT);
+ assert(leaseRecoverPhone(absent,token,ee,0,error,sizeof(error))==1);sameContents(absent,ee);
+ assert(leaseReturn(absent,token,ee,error,sizeof(error))==2);sameContents(absent,ee);
+ assert(!remove(absent));assert(!leaseReturn(absent,token,ee,error,sizeof(error)));
+ assert(!leaseRecoverPhone(absent,token,ee,0,error,sizeof(error)));
+ puts("Explicit phone recovery also creates a verified target with all local files absent and refuses receipt-only missing-file success.");
+ puts("Explicit phone recovery restores a deleted target, keeps old revocation, verifies final data, handles lost ACKs and refuses active/conflicting owners.");
  puts("registered empty handoff, original auto-joined companion return and mismatched trainer/course/Pokemon refusal passed");
  puts("conflicting Pokemon refusal, immutable snapshots, durable revocation and late-return checks passed");
  puts("checkout lock, crash retry, return, force-unlock revocation and new-session checks passed");

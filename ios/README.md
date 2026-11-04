@@ -62,3 +62,12 @@ Console saves reread the final filename after replacement. FAT/3DS replacement k
 Fault checks cover failed and silently dropped writes, rollback failures, explicit backup restoration and journal replay. Use at your own risk and keep independent backups. iPhone source changes have host C and Swift syntax checks only, not an Apple SDK build.
 
 Companion 1.4 adds named phone profiles with all-active walking and trainer-name/public-ID binding. Console Recovery uses START to restore a selected snapshot, and SELECT for interrupted-save candidates. Final-file existence/content is rechecked before return acknowledgement. See the root howtouse.txt for controls, recovery implications and current build limitations.
+
+
+Version 1.5 adds original-style three-button controls, daily profile visits,
+Bluetooth LE visits/friendly battles, optional expanded Dowsing rewards and
+phone-copy recovery after console-file deletion. CoreBluetooth handles nearby
+phones; console handoffs continue to use local Wi-Fi. The generated Xcode
+project includes every Swift source under Walker/. Bridge.c compiles the shared
+classic renderer and Bluetooth battle core. See the root howtouse.txt for
+controls and simplified battle rules.

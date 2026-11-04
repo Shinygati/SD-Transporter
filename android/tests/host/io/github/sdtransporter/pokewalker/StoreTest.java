@@ -25,7 +25,7 @@ public class StoreTest {
   WalkerStore restored=reopen(dir);
   if(!restored.returnPending||restored.mode!=0||!restored.pendingToken.equals(s.pendingToken)||!Arrays.equals(restored.data,current))throw new AssertionError("pending return lost after process restart");
   File journal=new File(dir,"walker-state.bin");byte[] latest=Files.readAllBytes(journal.toPath());
-  Files.write(journal.toPath(),Arrays.copyOf(latest,latest.length-3)); // legacy format ended after revoked
+  Files.write(journal.toPath(),Arrays.copyOf(latest,latest.length-31)); // legacy format ended after revoked: no pending flag, empty UTF binding, expanded flag or 2 display settings
   restored=reopen(dir);
   if(restored.returnPending||restored.revoked||!Arrays.equals(restored.data,current)||!restored.active())throw new AssertionError("legacy journal no longer readable");
   restored.returnPending=false;restored.save();

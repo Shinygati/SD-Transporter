@@ -1,0 +1,1 @@
+walker_shell.png: image supplied by the project owner. Original creator and image licence have not been independently identified. No GPL licence is asserted for this asset. The source image is unchanged; its sample LCD is covered by the app's live display. Rights remain with their respective owners.

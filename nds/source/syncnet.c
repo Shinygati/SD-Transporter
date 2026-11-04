@@ -45,7 +45,7 @@ static unsigned received, headLength, bodyLength;
 static char response[640], returnReceipt[96];
 static const unsigned char *responseBody;
 static unsigned responseLength, sentHeader, sentBody;
-static int networkState, responding, draining;
+static int networkState, responding, draining, recoveryMode;
 static time_t drainStarted;
 #define SYNC_CHUNK 4096u
 static time_t activity;
@@ -117,7 +117,7 @@ void syncStop(void) {
     socMemory = 0;
   }
 #endif
-  networkState = 0;
+  networkState = 0;recoveryMode=0;
 }
 static int listenNow(void) {
   listener = socket(AF_INET, SOCK_STREAM, 0);
@@ -197,6 +197,12 @@ int syncStart(const char *path, SyncBeforeCheckout before, SyncEvent event) {
 #endif
   return 1;
 }
+int syncStartRecovery(const char *path,const unsigned char *baseline,SyncEvent event) {
+  if(!syncStart(path,0,event))return 0;
+  if(baseline)memcpy(snapshot,baseline,WALKER_FILE_SIZE);
+  recoveryMode=baseline?1:2;
+  return 1;
+}
 int syncReady(void) { return networkState == 2; }
 int syncBusy(void) { return peer != NO_SOCKET; }
 const char *syncAddress(void) { return address; }
@@ -263,8 +269,10 @@ static void handle(void) {
     errorResponse(400, "A 16-byte phone session token is required.");
     return;
   }
-  char trainer[64];
-  if(header("X-Walker-Trainer",trainer,sizeof(trainer)) && !leaseMatchesTrainer(selected,trainer)) {
+  char trainer[64]={0};
+  char recoveryTrainer[37];
+  if(header("X-Walker-Trainer",trainer,sizeof(trainer)) &&
+     (recoveryMode==1?(!walkerTrainerKey(snapshot,recoveryTrainer)||strcmp(trainer,recoveryTrainer)):recoveryMode==2?0:!leaseMatchesTrainer(selected,trainer))) {
     errorResponse(409,"Trainer name or Trainer ID does not match this phone profile. Select the matching walker.");return;
   }
   if (post) {
@@ -278,24 +286,27 @@ static void handle(void) {
       return;
     char error[160];
     const uint32_t returnedCRC=walkerCrc(request+headLength,WALKER_FILE_SIZE);
-    int returned=leaseReturn(selected,token,request+headLength,error,sizeof(error));
+    if(recoveryMode==2 && trainer[0] && (!walkerTrainerKey(request+headLength,recoveryTrainer)||strcmp(trainer,recoveryTrainer))){errorResponse(409,"Phone trainer binding differs from its returned data.");return;}
+    int returned=recoveryMode?leaseRecoverPhone(selected,token,request+headLength,recoveryMode==1?snapshot:0,error,sizeof(error)):
+                              leaseReturn(selected,token,request+headLength,error,sizeof(error));
     if (!returned) {
       WalkerLease active;
       int state = leaseInspect(selected, &active);
       int same = state == 1 && !memcmp(active.token, token, 16);
       int revoked =
           leaseSessionRevoked(selected, token) || (same && active.revoked);
-      errorResponse(revoked ? 410 : (same || state < 0 ? 503 : 409), error);
+      errorResponse(revoked && !recoveryMode ? 410 : (same || state < 0 ? 503 : 409), error);
       return;
     }
     if (returned==1 && onEvent)
       onEvent(2);
     snprintf(statusText,sizeof(statusText),"%s",returned==1?
-             "Returned. Console walker unlocked.":"Return already acknowledged. Current walker unchanged.");
+             "Pokémon returned. Console copy unlocked.":"Return already acknowledged. Current walker unchanged.");
     snprintf(returnReceipt,sizeof(returnReceipt),"PWRETURN1 %s %08lX\n",session,(unsigned long)returnedCRC);
     respond(200, "OK", (unsigned char *)returnReceipt,
             (unsigned)strlen(returnReceipt), session, returnedCRC);
   } else {
+    if(recoveryMode){errorResponse(409,"Phone recovery accepts returns only. Use Return Pokemon on the phone.");return;}
     if (leaseSessionRevoked(selected, token)) {
       errorResponse(
           410,
@@ -322,7 +333,7 @@ static void handle(void) {
     if (onEvent)
       onEvent(1);
     snprintf(statusText, sizeof(statusText),
-             "On phone. Console access is locked.");
+             "Pokémon is on your phone. Console access is locked.");
     respond(200, "OK", snapshot, WALKER_FILE_SIZE, session, 0);
   }
 }

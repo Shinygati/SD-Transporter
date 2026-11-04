@@ -217,13 +217,14 @@ static void raster(const uint8_t *ee, unsigned off, int width, int height, float
     if (!ee || off + (unsigned)width * height / 4 > WALKER_FILE_SIZE)
         return;
     const uint32_t colors[4] = {LCD, RGB(153, 180, 132), RGB(92, 126, 91), RGB(43, 69, 57)};
+    int flip=width==32 && height==24 && off>=0x91be && off<0x933e && !(ee[WALKER_ROUTE+14]&1);
     for (int py = 0; py < height; py++)
         for (int px = 0; px < width; px++) {
             unsigned pos = off + ((py / 8) * width + px) * 2;
             unsigned bit = py & 7;
             unsigned c = ((ee[pos] >> bit) & 1) * 2 + ((ee[pos + 1] >> bit) & 1);
             if (c)
-                rect(x + px * scale, y + py * scale, scale, scale, colors[c]);
+                rect(x + (flip?width-1-px:px) * scale, y + py * scale, scale, scale, colors[c]);
         }
 }
 static void device(const UIState *s) {
@@ -475,14 +476,37 @@ void uiBottom(const UIState *s) {
         }
         if (s->scanLimited)
             label(16, 212, .55f, GOLD, "Search limit reached", 288);
-        label(16, 223, .55f, INK, "A Open  X Scan  SELECT Recovery", 288);
+        label(16, 223, .55f, INK, "A Open  Y Games  SELECT Recovery", 288);
         return;
+    }
+    if(s->screen==UI_COURSE_CONFIRM){
+        label(17,12,.6f,INK,"Special/event courses",290);
+        paragraph(20,45,.5f,INK,"Activate special/event courses supported by this HGSS save's language. Normal watt unlocks stay unchanged. The game save is verified and backed up first.",280,6,20);
+        paragraph(20,168,.42f,GOLD,s->phonePaths[s->phoneCursor],280,2,17);label(17,220,.5f,INK,"A Activate  B Cancel",290);return;
+    }
+    if(s->screen==UI_PHONE_TARGET || s->screen==UI_PHONE_RECEIVE_CONFIRM){
+        label(17,12,.6f,INK,s->screen==UI_PHONE_TARGET?"Return destination":"Receive phone copy?",290);
+        if(s->screen==UI_PHONE_TARGET){
+            for(int row=0;row<6;row++){int n=(s->phoneCursor/6)*6+row;if(n>=s->phoneCount)break;
+                const char *name=strrchr(s->phonePaths[n],'/');roundbox(12,42+row*27,296,24,5,n==s->phoneCursor?RGB(34,87,86):PANEL);label(20,46+row*27,.45f,INK,name?name+1:s->phonePaths[n],280);
+            }
+            label(17,220,.5f,INK,"A Phone  X Courses  B Cancel",290);
+        }else{
+            paragraph(20,45,.5f,INK,"Use only if the console walker is missing. Receive the phone's current copy into this game's saves folder. Existing active walkers cannot be overwritten.",280,6,20);
+            paragraph(20,168,.42f,GOLD,s->phonePaths[s->phoneCursor],280,2,17);label(17,220,.48f,INK,"A Receive phone  B Cancel",290);
+        }return;
+    }
+    if(s->screen==UI_REWARD_SETTINGS) {
+        label(17,12,.6f,INK,"Dowsing rewards",290);
+        paragraph(20,45,.5f,INK,"Adds Master Ball, PP items, TMs, vitamins, Rare Candy, EV-training items, evolution items, held items and Heart Scales. 92% of Dowsing finds still use the course. Off by default.",280,7,20);
+        label(20,191,.5f,TEAL,s->expandedItems?"Currently enabled":"Currently disabled",280);
+        label(17,220,.48f,INK,"A Opt in  X Disable  B Back",290);return;
     }
     if(s->screen==UI_RESTORE_BACKUP) {
         label(17,12,.6f,INK,"Restore selected backup?",290);
-        paragraph(20,48,.5f,INK,"Current progress is backed up first. Any phone handoff is revoked. Restoring old data can duplicate Pokémon already received in HGSS.",280,6,19);
+        paragraph(20,48,.5f,INK,"A restores the backup and revokes the phone. X receives matching phone progress into a missing target. Old data may duplicate Pokemon already received in HGSS.",280,6,19);
         paragraph(20,168,.43f,GOLD,s->backupName,280,2,18);
-        label(17,220,.48f,INK,"A Restore backup   B Cancel",290);return;
+        label(17,220,.48f,INK,"A Restore  X From phone  B Cancel",290);return;
     }
     if(s->screen==UI_RECOVER_SAVE) {
         label(17,12,.6f,INK,"Recover interrupted save?",290);
@@ -495,7 +519,7 @@ void uiBottom(const UIState *s) {
         int active=s->screen==UI_DELETE_ACTIVE,confirm=s->screen!=UI_BACKUPS;
         label(17,12,.6f,INK,active?"Delete active walker?":confirm?"Delete recovery copy?":"Recovery copies",290);
         if(confirm) {
-            paragraph(20,50,.55f,INK,active?"Remove this device's active walker? A recovery copy is preserved first. Any phone handoff on this console is revoked.":"Permanently delete this recovery snapshot? The active walker and ownership records stay intact.",280,5,21);
+            paragraph(20,50,.55f,INK,active?"Remove this device's active walker? A recovery copy is preserved first. A walker on the phone keeps its return permission.":"Permanently delete this recovery snapshot? The active walker and ownership records stay intact.",280,5,21);
             paragraph(20,161,.42f,GOLD,active?s->backupWalker:s->backupName,280,2,18);
             label(17,220,.55f,INK,"A Confirm delete    B Cancel",290);
         } else {
@@ -539,7 +563,7 @@ void uiBottom(const UIState *s) {
                           : s->screen == UI_PACK     ? "Pokémon & items"
                           : s->screen == UI_REPLACE  ? "Pack full — choose a slot"
                           : s->screen == UI_CARD     ? "Trainer card"
-                          : s->screen == UI_SETTINGS ? "Settings 1.4-test"
+                          : s->screen == UI_SETTINGS ? "Settings 1.5"
                                                      : "Adventure journal";
     label(17, 12, .52f, INK, heading, 290);
     if (s->screen == UI_HOME) {
@@ -626,7 +650,7 @@ void uiBottom(const UIState *s) {
         }
 
         roundbox(12,198,296,20,5,PANEL);
-        label(22,200,.5f,TEAL,"X Recovery copies / delete",280);
+        label(22,200,.5f,TEAL,"X Backups   SELECT Rewards",280);
     } else if (s->screen == UI_RESULT) {
         roundbox(15, 43, 290, 168, 10, PANEL);
         paragraph(26, 49, .6f, INK, s->message, 268, 2, 21);

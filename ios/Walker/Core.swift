@@ -24,6 +24,38 @@ enum WalkerCore {
         let result = data.withUnsafeBytes { pw_crc($0.bindMemory(to: UInt8.self).baseAddress, UInt32(data.count)) }
         return String(format: "%08x", result)
     }
+    static func homeFrame(_ data: Data?,ms: UInt32) -> [UInt8] {
+        var pixels=[UInt8](repeating:0,count:6144),state=[Int32](repeating:0,count:40)
+        guard let data,data.count==65536 else { return pixels }
+        data.withUnsafeBytes { walkerClassicFrame($0.bindMemory(to:UInt8.self).baseAddress,&state,&pixels,ms) }
+        return pixels
+    }
+    static func peerPacket(_ data: Data) throws -> Data {
+        guard data.count==65536 else { throw WalkerError.message("Invalid partner data.") }
+        var packet=[UInt8](repeating:0,count:1688)
+        let ok=data.withUnsafeBytes { walkerPeerExport($0.bindMemory(to:UInt8.self).baseAddress,&packet) }
+        guard ok != 0 else { throw WalkerError.message("Partner details are incomplete.") };return Data(packet)
+    }
+    static func peerData(_ packet: Data) throws -> Data {
+        guard packet.count==1688 else { throw WalkerError.message("Invalid Bluetooth partner data.") }
+        var bytes=[UInt8](repeating:0,count:65536)
+        let ok=packet.withUnsafeBytes { walkerPeerImport($0.bindMemory(to:UInt8.self).baseAddress,1688,&bytes) }
+        guard ok != 0 else { throw WalkerError.message("The other phone sent invalid Pokémon details.") };return Data(bytes)
+    }
+    static func peerKey(_ packet: Data) -> String { crc(packet.subdata(in:12..<116)+packet.subdata(in:246..<262)+packet.subdata(in:140..<146)) }
+    static func friendlyStart(_ a: Data,_ b: Data,seed: Int32) -> [Int32] {
+        var board=[Int32](repeating:0,count:24)
+        a.withUnsafeBytes { aa in b.withUnsafeBytes { bb in walkerFriendlyStart(aa.bindMemory(to:UInt8.self).baseAddress,bb.bindMemory(to:UInt8.self).baseAddress,&board,UInt32(bitPattern:seed)) } };return board
+    }
+    static func friendlyTurn(_ a: Data,_ b: Data,board: inout [Int32],aChoice: Int,bChoice: Int) -> Bool {
+        guard board.count==24,(0...3).contains(aChoice),(0...3).contains(bChoice) else { return false }
+        return a.withUnsafeBytes { aa in b.withUnsafeBytes { bb in walkerFriendlyTurn(aa.bindMemory(to:UInt8.self).baseAddress,bb.bindMemory(to:UInt8.self).baseAddress,&board,UInt32(aChoice),UInt32(bChoice)) != 0 } }
+    }
+    static func friendlyFrame(_ a: Data,_ b: Data,board: [Int32],side: Int,selected: Int,ms: UInt32) -> [UInt8] {
+        var pixels=[UInt8](repeating:0,count:6144)
+        guard board.count==24,(0...1).contains(side),(0...3).contains(selected) else { return pixels }
+        a.withUnsafeBytes { aa in b.withUnsafeBytes { bb in board.withUnsafeBufferPointer { state in walkerFriendlyFrame(aa.bindMemory(to:UInt8.self).baseAddress,bb.bindMemory(to:UInt8.self).baseAddress,state.baseAddress,UInt32(side),UInt32(selected),&pixels,ms) } } };return pixels
+    }
     static func mutate<T>(_ data: inout Data, _ action: (UnsafeMutablePointer<UInt8>) -> T) -> T {
         precondition(data.count == 65536)
         return data.withUnsafeMutableBytes { action($0.bindMemory(to: UInt8.self).baseAddress!) }
@@ -40,6 +72,16 @@ struct WalkerJournal: Codable {
     var token = ""
     var pendingToken = ""
     var trainerKey: String? = nil
+    var expandedItems: Bool? = nil
+    var classicVolume: Int? = nil
+    var classicContrast: Int? = nil
+    var battleSession: String? = nil
+    var battlePeer: String? = nil
+    var battlePaid: Bool? = nil
+    var battleDone: Bool? = nil
+    var battleRewarded: Bool? = nil
+    var battleRewardChoice: Int? = nil
+    var battleWinner: Int? = nil
     var host = ""
     var consoles: [SavedConsole] = []
     var revoked = false
@@ -73,14 +115,22 @@ final class WalkerDisk {
         var state = try JSONDecoder().decode(WalkerJournal.self, from: envelope.payload)
         guard (0...2).contains(state.mode), (1...86400).contains(state.rate), state.data == nil || WalkerCore.walkable(state.data!) else { throw WalkerError.message("Invalid saved walker. Existing files were kept.") }
         if let key = state.trainerKey, !key.isEmpty, (key.count != 36 || !key.allSatisfy({ "0123456789abcdef".contains($0) })) { throw WalkerError.message("Saved trainer binding is damaged. Existing files were kept.") }
+        if let session=state.battleSession,!session.isEmpty,(session.count != 32 || !session.allSatisfy({ "0123456789abcdef".contains($0) })) { throw WalkerError.message("Saved battle session is damaged.") }
+        if let choice=state.battleRewardChoice,choice < -1 || choice > 0x8218 { throw WalkerError.message("Saved reward is damaged.") }
         if !state.token.isEmpty, try retired(state.token) {
+            if try retiredKind(state.token) == "deleted" { state.trainerKey = nil }
             state.data = nil; state.token = ""; state.pendingToken = ""; state.mode = 0; state.returnPending = false; state.revoked = false
         }
+        if state.data == nil, state.token.isEmpty, try latestSessionDeleted() { state.trainerKey = nil }
         return state
     }
-    func save(_ state: WalkerJournal) throws {
+    static func encoded(_ state: WalkerJournal) throws -> Data {
         let payload = try JSONEncoder().encode(state)
         let bytes = try JSONEncoder().encode(JournalEnvelope(payload: payload, crc: WalkerCore.crc(payload)))
+        return bytes
+    }
+    func save(_ state: WalkerJournal) throws {
+        let bytes = try Self.encoded(state)
         try bytes.write(to: journal, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         guard try Data(contentsOf: journal) == bytes else { throw WalkerError.message("Saved state could not be verified.") }
     }
@@ -125,13 +175,25 @@ final class WalkerDisk {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(token + ".retired")
     }
-    func retired(_ token: String) throws -> Bool {
+    private func latestSessionDeleted() throws -> Bool {
+        let directory = root.appendingPathComponent("sessions", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: directory.path) else { return false }
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey]).filter { $0.pathExtension == "retired" }
+        let dated = try files.map { ($0, try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast) }
+        guard let newest = dated.map({ $0.1 }).max() else { return false }
+        for (url, date) in dated where date == newest {
+            if try retiredKind(url.deletingPathExtension().lastPathComponent) != "deleted" { return false }
+        }
+        return true
+    }
+    func retired(_ token: String) throws -> Bool { try retiredKind(token) != nil }
+    private func retiredKind(_ token: String) throws -> String? {
         let url = try receiptURL(token)
-        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let record = try JSONDecoder().decode(SessionRetirement.self, from: Data(contentsOf: url))
         let key = Data("\(record.token)|\(record.kind)|\(record.payloadCRC)".utf8)
         guard record.token == token, ["returned", "deleted"].contains(record.kind), record.checksum == WalkerCore.crc(key) else { throw WalkerError.message("A retired session record is damaged. It remains blocked.") }
-        return true
+        return record.kind
     }
     func retire(_ state: WalkerJournal, kind: String) throws {
         guard let data = state.data else { return }
@@ -206,5 +268,48 @@ final class WalkerCatalog {
         guard !value.isEmpty, value.count <= 100, let index = entries.firstIndex(where: { $0.id == selected }) else { throw WalkerError.message("Enter a profile name (1-100 characters).") }
         let old = entries[index].name; entries[index].name = value
         do { try save() } catch { entries[index].name = old; throw error }
+    }
+}
+
+// A verified write-ahead journal publishes both profile results before success.
+// Recovery only accepts the exact before/after journal images; a foreign change
+// is preserved and blocks the connection rather than being overwritten.
+private struct PairEntry: Codable { var id: String; var before: Data; var after: Data }
+private struct PairPlan: Codable { var entries: [PairEntry] }
+enum WalkerPairTransaction {
+    private static func url(_ root: URL) -> URL { root.appendingPathComponent("profile-connection.json") }
+    private static func write(_ bytes: Data, to target: URL) throws {
+        try bytes.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        guard try Data(contentsOf: target) == bytes else { throw WalkerError.message("Connection save could not be verified.") }
+    }
+    private static func encoded(_ plan: PairPlan) throws -> Data {
+        let payload = try JSONEncoder().encode(plan)
+        return try JSONEncoder().encode(JournalEnvelope(payload: payload, crc: WalkerCore.crc(payload)))
+    }
+    static func recover(root: URL, profiles: Set<String>) throws {
+        let file = url(root)
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        let bytes = try Data(contentsOf: file)
+        guard bytes.count < 900000 else { throw WalkerError.message("Connection journal is too large.") }
+        let envelope = try JSONDecoder().decode(JournalEnvelope.self, from: bytes)
+        guard WalkerCore.crc(envelope.payload) == envelope.crc else { throw WalkerError.message("Connection journal checksum failed.") }
+        let plan = try JSONDecoder().decode(PairPlan.self, from: envelope.payload)
+        if plan.entries.isEmpty { return }
+        guard plan.entries.count == 2, plan.entries[0].id != plan.entries[1].id else { throw WalkerError.message("Invalid connection targets.") }
+        var targets: [(URL, Data)] = []
+        for entry in plan.entries {
+            guard profiles.contains(entry.id) else { throw WalkerError.message("Connection profile is unavailable.") }
+            let disk = try WalkerDisk(profileID: entry.id)
+            let current = try Data(contentsOf: disk.journal)
+            guard current == entry.before || current == entry.after else { throw WalkerError.message("Profile changed during an interrupted connection. All copies were preserved.") }
+            targets.append((disk.journal, entry.after))
+        }
+        for (target, after) in targets { try write(after, to: target) }
+        try write(try encoded(PairPlan(entries: [])), to: file)
+    }
+    static func commit(root: URL, first: (String, WalkerDisk, WalkerJournal), second: (String, WalkerDisk, WalkerJournal), profiles: Set<String>) throws {
+        let plan = try PairPlan(entries: [first,second].map { PairEntry(id: $0.0, before: try Data(contentsOf: $0.1.journal), after: try WalkerDisk.encoded($0.2)) })
+        try write(try encoded(plan), to: url(root))
+        try recover(root: root, profiles: profiles)
     }
 }

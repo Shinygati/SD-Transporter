@@ -2,7 +2,9 @@
 #ifndef PW_IOS_BRIDGE_H
 #define PW_IOS_BRIDGE_H
 #include <stdint.h>
+#include "walkerclassic.h"
 int pw_info(const uint8_t *data, int64_t values[14]);
+int pw_visit(uint8_t *,const uint8_t *,uint32_t);
 int pw_walkable(const uint8_t *data);
 const char *pw_species(unsigned species);
 const char *pw_item(unsigned item);

@@ -154,3 +154,6 @@ xcuserdata/
 
 # Interrupted-save rollback contains private walker data.
 *.[wW][aA][lL][kK][eE][rR]*
+
+# Private local Android signing key and password; never distribute.
+/.local-signing/

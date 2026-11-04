@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 @main struct WalkerApp: App {
     @StateObject private var model = WalkerModel()
@@ -19,23 +20,68 @@ enum WalkerTheme {
     static let panel = Color(red: 0.09, green: 0.19, blue: 0.23)
     static let background = Color(red: 0.04, green: 0.10, blue: 0.16)
 }
-struct WalkerButton: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.frame(maxWidth: .infinity, minHeight: 44).padding(8)
-            .foregroundStyle(WalkerTheme.ink).background(WalkerTheme.panel.opacity(configuration.isPressed ? 0.6 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 13))
+private struct WalkerMenuPreference: PreferenceKey {
+    static var defaultValue: Int = 0
+    static func reduce(value: inout Int, nextValue: () -> Int) { value = nextValue() }
+}
+struct WalkerMenuLabel: View {
+    let title: String
+    let icon: Int
+    var body: some View { Text(title).preference(key:WalkerMenuPreference.self,value:icon) }
+}
+struct PixelMenuIcon: View {
+    let kind: Int
+    private var rows: [UInt16] { var rows=[UInt16](repeating:0,count:16);walkerMenuIcon(UInt32(clamping:kind),&rows);return rows }
+    var body: some View {
+        Canvas { context,size in
+            context.fill(Path(roundedRect:CGRect(origin:.zero,size:size),cornerRadius:6),with:.color(Color(red:0.14,green:0.29,blue:0.27)))
+            let rows=rows,unit=min(size.width,size.height)/20,x=(size.width-16*unit)/2,y=(size.height-16*unit)/2
+            for py in 0..<16 { for px in 0..<16 where rows[py]&(1<<px) != 0 { context.fill(Path(CGRect(x:x+CGFloat(px)*unit,y:y+CGFloat(py)*unit,width:unit,height:unit)),with:.color(WalkerTheme.mint)) } }
+        }.accessibilityHidden(true)
     }
+}
+private struct WalkerButtonContent<Label: View>: View {
+    let label: Label
+    let pressed: Bool
+    @State private var icon = 0
+    var body: some View {
+        HStack(spacing:12) { PixelMenuIcon(kind:icon).frame(width:32,height:32);label.frame(maxWidth:.infinity,alignment:.leading) }
+            .frame(minHeight:44).padding(10).foregroundStyle(WalkerTheme.ink)
+            .background(WalkerTheme.panel.opacity(pressed ? 0.6 : 1)).clipShape(RoundedRectangle(cornerRadius:13))
+            .onPreferenceChange(WalkerMenuPreference.self) { icon=$0 }
+    }
+}
+struct WalkerButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { WalkerButtonContent(label:configuration.label,pressed:configuration.isPressed) }
+}
+extension NavigationLink where Label == WalkerMenuLabel {
+    init(_ title: String, icon: Int, @ViewBuilder destination: () -> Destination) { self.init(destination:destination,label:{WalkerMenuLabel(title:title,icon:icon)}) }
+}
+extension Button where Label == WalkerMenuLabel {
+    init(_ title: String, icon: Int, action: @escaping () -> Void) { self.init(action:action,label:{WalkerMenuLabel(title:title,icon:icon)}) }
 }
 struct WalkerHome: View {
     @EnvironmentObject var model: WalkerModel
     private let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var ticks = 0
+    @State private var classicPresented = false
+    @State private var startClassicOnly = true
+    @State private var classicFirstButton: Int32 = -1
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("iPhone Pokewalker").font(.largeTitle.bold())
                     WalkerPicture(data: model.state.returnPending || model.state.revoked ? nil : model.state.data).frame(height: 300)
+                        .contentShape(Rectangle()).onTapGesture { if model.usable { startClassicOnly=true;classicFirstButton = -1;classicPresented = true } }
+                        .accessibilityAddTraits(.isButton).accessibilityLabel("Pokewalker. Open original-style controls")
+                    HStack {
+                        ForEach(0..<3) { key in
+                            Button(key==0 ? "◀":key==1 ? "●":"▶") {
+                                startClassicOnly=false;classicFirstButton=Int32(key);classicPresented=true
+                            }.disabled(!model.usable)
+                        }
+                    }
                     if model.state.returnPending {
                         Text("Return awaiting confirmation").font(.title2.bold())
                         Text("Phone copy locked. Retry from the console sync screen.")
@@ -46,19 +92,23 @@ struct WalkerHome: View {
                     } else { Text("Sync with a 3DS or NDS console over local Wi-Fi").font(.title3) }
                     if !model.message.isEmpty { Text(model.message).foregroundStyle(WalkerTheme.gold).textSelection(.enabled) }
                     if model.storageBlocked { Button("Reopen saved state", action: model.retryStorage) }
-                    NavigationLink("Walker profiles · \(model.profileName)") { ProfilesView() }.disabled(model.busy)
+                    WalkerDetailsView()
+                    NavigationLink("Walker profiles · \(model.profileName)", icon:6) { ProfilesView() }.disabled(model.busy)
                     if model.active && !model.state.returnPending {
                         NavigationLink(model.info[11] > 0 ? "Wild visitor · free battle" : "Poké Radar · 10 watts") { RadarView() }.disabled(!model.usable || model.info[1] == 0)
-                        NavigationLink("Dowsing · 3 watts") { DowsingView() }.disabled(!model.usable || model.info[1] == 0)
-                        NavigationLink("Your pack") { PackView() }.disabled(!model.usable)
-                        NavigationLink("Trainer card") { TrainerView() }.disabled(!model.usable)
+                        NavigationLink("Dowsing · 3 watts", icon:2) { DowsingView() }.disabled(!model.usable || model.info[1] == 0)
+                        NavigationLink("Your pack", icon:3) { PackView() }.disabled(!model.usable)
+                        NavigationLink("Trainer card", icon:4) { TrainerView() }.disabled(!model.usable)
                     }
-                    NavigationLink("Settings") { SettingsView() }
-                    NavigationLink("Console Wi-Fi sync") { SyncView() }
+                    NavigationLink("Connect another Pokewalker", icon:18) { ConnectionChoiceView() }.disabled(!model.usable)
+                    if (model.state.battleRewardChoice ?? -1)>=0 { NavigationLink("Claim battle reward",icon:3) { BattleRewardView() }.disabled(!model.usable) }
+                    NavigationLink("Settings", icon:5) { SettingsView() }
+                    NavigationLink("Console Wi-Fi sync", icon:8) { SyncView() }
                     if model.busy { ProgressView("Keep both devices connected…") }
                 }.padding()
             }.background(WalkerTheme.background).buttonStyle(WalkerButton()).tint(WalkerTheme.mint)
         }
+        .sheet(isPresented: $classicPresented) { ClassicWalkerView(initiallyClassic:startClassicOnly,initialButton:classicFirstButton).environmentObject(model) }
         .onReceive(clock) { _ in model.tick(); ticks += 1; if ticks % 30 == 0 { model.refreshMotion() } }
     }
 }
@@ -74,31 +124,19 @@ struct WalkerPicture: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: battle == nil ? 0.4 : 0.08)) { timeline in
             Canvas { context, size in
+                var context=context
                 let frame = Int(timeline.date.timeIntervalSince1970 / 0.4) & 1
                 let box = CGRect(x: 0, y: 0, width: size.width, height: size.height)
                 context.fill(Path(roundedRect: box, cornerRadius: 24), with: .color(WalkerTheme.panel))
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
                 let radius = min(size.width * 0.45, size.height * 0.46)
-                context.fill(Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius + 4, width: radius * 2, height: radius * 2)), with: .color(WalkerTheme.background))
-                context.fill(Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)), with: .color(Color(red: 0.86, green: 0.91, blue: 0.86)))
-                var upper = Path()
-                upper.addArc(center: center, radius: radius - 4, startAngle: .degrees(180), endAngle: .degrees(360), clockwise: false)
-                upper.closeSubpath()
-                context.fill(upper, with: .color(Color(red: 0.80, green: 0.34, blue: 0.34)))
-                // Keep the pre-resize LCD/pixel dimensions; only its surrounding shell grows.
-                let oldHeight: CGFloat = compact ? 120 : 200
-                let scale = max(1, floor(min((size.width - 28) / 64, (oldHeight - 24) / 48)))
-                let x0 = (size.width - 64 * scale) / 2, y0 = (size.height - 48 * scale) / 2
-                let lcd = CGRect(x: x0, y: y0, width: 64 * scale, height: 48 * scale)
-                context.fill(Path(roundedRect: lcd.insetBy(dx: -5, dy: -5), cornerRadius: 9), with: .color(Color(red: 0.17, green: 0.27, blue: 0.22)))
-                context.fill(Path(lcd), with: .color(Color(red: 0.78, green: 0.86, blue: 0.66)))
-                for n in -1...1 {
-                    let buttonRadius = radius * 0.08
-                    let button = CGRect(x: center.x + CGFloat(n) * radius * 0.38 - buttonRadius, y: center.y + radius * 0.76 - buttonRadius, width: buttonRadius * 2, height: buttonRadius * 2)
-                    context.fill(Path(ellipseIn: button), with: .color(Color(red: 0.34, green: 0.49, blue: 0.44)))
-                }
-                guard let data, data.count == 65536, WalkerCore.info(data)[1] != 0 else { return }
-                let palette = [Color.clear, Color(red: 0.60, green: 0.71, blue: 0.52), Color(red: 0.36, green: 0.49, blue: 0.36), Color(red: 0.17, green: 0.27, blue: 0.22)]
+                let body=CGRect(x:center.x-radius,y:center.y-radius,width:radius*2,height:radius*2)
+                context.draw(context.resolve(Image("WalkerShell")),in:body)
+                let lcd=CGRect(x:body.minX+body.width*230/1005,y:body.minY+body.height*261/1003,width:body.width*553/1005,height:body.height*383/1003)
+                context.clip(to:Path(roundedRect:lcd,cornerRadius:radius*0.035))
+                context.fill(Path(lcd),with:.color(WalkerLCDShell.palette(1)[0]))
+                guard let data, data.count == 65536 else { return }
+                let palette = WalkerLCDShell.palette(1)
                 if let battle, battle.count == 7 {
                     let elapsed = max(0, timeline.date.timeIntervalSince(animationStart))
                     let t = min(1, elapsed / (action == 2 ? 1.8 : 1.2))
@@ -121,22 +159,22 @@ struct WalkerPicture: View {
                     }
                     let throwing = animating && action == 2
                     if throwing && t > 0.28 { showWild = false }
-                    func sprite(_ offset: Int, _ x: CGFloat) {
+                    func sprite(_ offset: Int, _ x: CGFloat, _ flip: Bool) {
                         for py in 0..<24 { for px in 0..<32 {
                             let at = offset + ((py / 8) * 32 + px) * 2
                             let color = Int(((data[at] >> (py & 7)) & 1) * 2 + ((data[at + 1] >> (py & 7)) & 1))
-                            if color != 0 { context.fill(Path(CGRect(x: ax + (x + CGFloat(px)) * unit, y: ay + CGFloat(22 + py) * unit, width: unit, height: unit)), with: .color(palette[color])) }
+                            if color != 0 { context.fill(Path(CGRect(x: ax + (x + CGFloat(flip ? 31-px:px)) * unit, y: ay + CGFloat(22 + py) * unit, width: unit, height: unit)), with: .color(palette[color])) }
                         } }
                     }
-                    if showWild { sprite(0x9a7e + Int(battle[5]) * 384 + pose * 192, wild) }
-                    if showPlayer { sprite(0x91be + pose * 192, player) }
+                    if showWild { sprite(0x9a7e + Int(battle[5]) * 384 + pose * 192, wild, (data[0x8f52+Int(battle[5])*16+14]&1)==0) }
+                    if showPlayer { sprite(0x91be + pose * 192, player, false) }
                     if throwing {
                         let q = min(1, t / 0.3)
                         var bx = ax + CGFloat(70 - 46 * q) * unit
                         var by = ay + CGFloat(34 - 15 * sin(q * .pi)) * unit
                         if t > 0.3 { bx = ax + CGFloat(24 + (t < 0.8 ? sin(t * 40) * 2 : 0)) * unit; by = ay + 38 * unit }
                         context.fill(Path(ellipseIn: CGRect(x: bx - 5 * unit, y: by - 5 * unit, width: 10 * unit, height: 10 * unit)), with: .color(palette[3]))
-                        context.fill(Path(ellipseIn: CGRect(x: bx - 3 * unit, y: by - 3 * unit, width: 6 * unit, height: 6 * unit)), with: .color(Color(red: 0.78, green: 0.86, blue: 0.66)))
+                        context.fill(Path(ellipseIn: CGRect(x: bx - 3 * unit, y: by - 3 * unit, width: 6 * unit, height: 6 * unit)), with: .color(palette[0]))
                         context.fill(Path(CGRect(x: bx - 4 * unit, y: by - unit / 2, width: 8 * unit, height: unit)), with: .color(palette[3]))
                         if t > 0.8 && battle[4] != 0 {
                             for n in -1...1 { let sx = bx + CGFloat(n) * 9 * unit, sy = by - CGFloat(n == 0 ? 13 : 8) * unit
@@ -153,10 +191,10 @@ struct WalkerPicture: View {
                     }
                     return
                 }
-                for y in 0..<48 { for x in 0..<64 {
-                    let at = 0x933e + frame * 768 + ((y / 8) * 64 + x) * 2
-                    let c = Int(((data[at] >> (y & 7)) & 1) * 2 + ((data[at + 1] >> (y & 7)) & 1))
-                    if c != 0 { context.fill(Path(CGRect(x: x0 + CGFloat(x) * scale, y: y0 + CGFloat(y) * scale, width: scale, height: scale)), with: .color(palette[c])) }
+                let pixels=WalkerCore.homeFrame(data,ms:UInt32(truncatingIfNeeded:UInt64(timeline.date.timeIntervalSince1970*1000)))
+                let scale=min(lcd.width/96,lcd.height/64),x0=lcd.midX-48*scale,y0=lcd.midY-32*scale
+                for y in 0..<64 { for x in 0..<96 {
+                    context.fill(Path(CGRect(x:(x0+CGFloat(x)*scale).rounded(),y:(y0+CGFloat(y)*scale).rounded(),width:(x0+CGFloat(x+1)*scale).rounded()-(x0+CGFloat(x)*scale).rounded(),height:(y0+CGFloat(y+1)*scale).rounded()-(y0+CGFloat(y)*scale).rounded())),with:.color(palette[Int(pixels[y*96+x]&3)]))
                 } }
             }
         }.accessibilityLabel("Original walker display")
@@ -190,12 +228,25 @@ struct GrassPatch: View {
 }
 
 struct SettingsView: View {
+    @AppStorage("menuHoldMilliseconds") private var menuHoldMilliseconds = 1000
     @EnvironmentObject var model: WalkerModel
     @State private var deleteCopy: URL?
     @State private var confirmCopy = false
     @State private var confirmActive = false
+    @State private var confirmExpanded = false
     var body: some View {
         Form {
+            Section("Controls") {
+                Picker("Menu button hold",selection:$menuHoldMilliseconds) {
+                    Text("0.25 seconds").tag(250)
+                    Text("0.5 seconds").tag(500)
+                    Text("1 second").tag(1000)
+                    Text("1.5 seconds").tag(1500)
+                    Text("2 seconds").tag(2000)
+                    Text("3 seconds").tag(3000)
+                }
+                Text("Hold the centre button for this long to return to the main LCD while browsing. Applies to every profile.")
+            }
             Section("Walking") {
                 Picker("Step source", selection: Binding(get: { model.state.mode }, set: model.setMode)) {
                     Text("Paused").tag(0); Text("Time-based").tag(1); Text("iPhone pedometer").tag(2)
@@ -204,6 +255,10 @@ struct SettingsView: View {
                     ForEach([1, 2, 5, 10, 30, 60, 300, 3600, 86400], id: \.self) { Text("\($0) seconds").tag($0) }
                 }.disabled(model.busy || model.state.returnPending || model.storageBlocked)
                 Text("Physical steps are the default. Motion permission is requested when a walker is active. iOS can provide up to seven days of physical step history. Time-based steps count only while this app is active; iOS does not keep a simulated timer running in the background.")
+            }
+            Section("Dowsing rewards") {
+                Toggle("Expanded items", isOn: Binding(get: { model.state.expandedItems == true }, set: { if $0 { confirmExpanded = true } else { model.setExpandedItems(false) } })).disabled(model.busy || model.state.returnPending || model.storageBlocked)
+                Text("Adds Master Ball, PP items, TMs, vitamins, Rare Candy, EV-training items, evolution items, held items and Heart Scales. 92% of Dowsing finds still use the course. Off by default. Battle rewards expand only when both phones enable this option.")
             }
             Section("Recovery copies") {
                 Text("Exported snapshots preserve earlier walkers. They do not reactivate an old phone session or merge progress.")
@@ -216,12 +271,15 @@ struct SettingsView: View {
                 if model.state.data != nil { Button("Delete active walker", role: .destructive) { confirmActive = true }.disabled(model.busy) }
             }
             Section("About") {
-                NavigationLink("Privacy policy") { PolicyView(name: "privacy") }
-                NavigationLink("Credits") { PolicyView(name: "credits") }
-                NavigationLink("GNU GPL licence") { PolicyView(name: "licence") }
-                Link("Support · Shinygati", destination: URL(string: "mailto:anthoney1313@gmail.com")!)
+                NavigationLink("Privacy policy", icon:14) { PolicyView(name: "privacy") }
+                NavigationLink("Credits", icon:15) { PolicyView(name: "credits") }
+                NavigationLink("GNU GPL licence", icon:15) { PolicyView(name: "licence") }
+
             }
         }.navigationTitle("Settings")
+            .confirmationDialog("Opt in to the expanded Dowsing item pool?", isPresented: $confirmExpanded, titleVisibility: .visible) {
+                Button("Opt in", icon:0) { model.setExpandedItems(true) }
+            }
             .confirmationDialog("Permanently delete this recovery snapshot? Active data and session records are kept.", isPresented: $confirmCopy, titleVisibility: .visible) {
                 Button("Delete recovery copy", role: .destructive) { if let deleteCopy { model.deleteHistory(deleteCopy) } }
             }
@@ -236,14 +294,15 @@ struct SyncView: View {
     @State private var host = ""
     @State private var name = "My console"
     @State private var replacing = false
+    @State private var recoveringReturn = false
     var body: some View {
         Form {
             Section("Console Wi-Fi sync") {
                 Text("Open Settings → Phone sync on the console and keep it open on the same local Wi-Fi.")
                 TextField("Console IP, e.g. 192.168.1.20", text: $host).keyboardType(.decimalPad).textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("Console name", text: $name)
-                Button("Save this console") { model.saveConsole(name, host: host) }
-                ForEach(model.state.consoles) { console in Button("\(console.name) · \(console.host)") { host = console.host } }
+                Button("Save this console", icon:8) { model.saveConsole(name, host: host) }
+                ForEach(model.state.consoles) { console in Button("\(console.name) · \(console.host)", icon:8) { host = console.host } }
                     .onDelete { offsets in let ids = offsets.map { model.state.consoles[$0].id }; for id in ids { model.removeConsole(id) } }
             }
             Section("Local transfer disclosure") {
@@ -252,18 +311,21 @@ struct SyncView: View {
                 Text("One device owns a walker at a time. Console recovery restores its earlier snapshot and revokes the old phone session; it cannot recover progress stored only on a lost phone.")
             }
             Section {
-                Button("Receive Pokémon from console") {
+                Button("Receive Pokémon from console", icon:8) {
                     if model.state.data != nil { replacing = true } else { Task { await model.sync(returning: false, host: host) } }
                 }.disabled(model.active || !model.state.syncConsent)
-                Button("Return Pokémon") { Task { await model.sync(returning: true, host: host) } }.disabled(!model.active || !model.state.syncConsent)
+                Button("Return Pokémon", icon:16) { if model.state.revoked { recoveringReturn = true } else { Task { await model.sync(returning: true, host: host) } } }.disabled((!model.active && !(model.state.revoked && model.state.data != nil)) || !model.state.syncConsent)
                 if model.busy { ProgressView("Syncing…") }
                 if !model.message.isEmpty { Text(model.message).textSelection(.enabled) }
                 if !model.state.pendingToken.isEmpty { Text("An unfinished receive retries the same session. Use the same console.") }
             }
         }.navigationTitle("Wi-Fi sync").disabled(model.busy || model.storageBlocked)
+            .confirmationDialog("On the console press Y from the walker list, select the HGSS destination and confirm Receive phone copy. Only a missing target can be restored.", isPresented: $recoveringReturn, titleVisibility: .visible) {
+                Button("Return phone copy", icon:16) { Task { await model.sync(returning: true, host: host, recovery: true) } }
+            }
             .onAppear { host = model.state.host }
-            .confirmationDialog("Preserve the old phone copy and receive a fresh walker? Progress will not be merged.", isPresented: $replacing, titleVisibility: .visible) {
-                Button("Preserve and receive") { Task { await model.sync(returning: false, host: host) } }
+            .confirmationDialog("Keep a recovery copy and receive a new Pokémon? Progress will not be merged.", isPresented: $replacing, titleVisibility: .visible) {
+                Button("Preserve and receive", icon:8) { Task { await model.sync(returning: false, host: host) } }
             }
     }
 }
@@ -273,6 +335,7 @@ struct PackView: View {
     var body: some View {
         List {
             Section("Pokémon") { ForEach(0..<3) { n in Text(pokemon(n)) } }
+            Section("Friend gifts") { ForEach(0..<10) { n in Text(model.friendItem(n)) } }
             Section("Items") { ForEach(0..<3) { n in let id = model.packID(item: true, slot: n); Text("Slot \(n + 1): \(WalkerCore.item(Int64(id)))") } }
         }.navigationTitle("Your pack")
     }
@@ -316,15 +379,94 @@ struct ProfilesView: View {
                 }
             }
             Section {
-                Button("Add walker profile") { name = ""; creating = true; naming = true }.disabled(model.busy)
-                Button("Rename selected profile") { name = model.profileName; creating = false; naming = true }.disabled(model.busy)
+                Button("Add walker profile", icon:6) { name = ""; creating = true; naming = true }.disabled(model.busy)
+                Button("Rename selected profile", icon:6) { name = model.profileName; creating = false; naming = true }.disabled(model.busy)
                 Text("To remove a Pokémon, select its profile and use Settings > Delete active walker. Recovery snapshots remain separate.")
             }
         }.navigationTitle("Walker profiles")
             .alert(creating ? "Add walker profile" : "Rename profile", isPresented: $naming) {
                 TextField("Profile name", text: $name)
-                Button("Save") { if creating { model.createProfile(name) } else { model.renameProfile(name) } }
+                Button("Save", icon:17) { if creating { model.createProfile(name) } else { model.renameProfile(name) } }
                 Button("Cancel", role: .cancel) { }
             }
+    }
+}
+
+
+@MainActor final class ClassicAudio: ObservableObject {
+    private var player: AVAudioPlayer?
+    func play(_ data: Data, volume: Int) {
+        stop(); guard !data.isEmpty, volume > 0 else { return }
+        do { try AVAudioSession.sharedInstance().setCategory(.ambient); player = try AVAudioPlayer(data: data); player?.volume = volume == 1 ? 0.25 : 0.5; player?.play() } catch { player = nil }
+    }
+    func stop() { player?.stop(); player = nil }
+}
+struct ProfileVisitView: View {
+    @EnvironmentObject var model: WalkerModel
+    @State private var target: String?
+    var body: some View {
+        List {
+            Text("The Pokémon play together and each Pokewalker receives a gift. The same two devices can meet once per day. Partners remain in their own profiles.")
+            ForEach(model.profiles.filter { $0.id != model.selectedProfileID }) { profile in
+                Button(profile.name) { target = profile.id }.disabled(!model.usable)
+            }
+            if !model.message.isEmpty { Text(model.message) }
+        }.navigationTitle("Connect another Pokewalker")
+            .confirmationDialog("Connect these two profiles? Both gifts are saved together before success.", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } }), titleVisibility: .visible) {
+                Button("Connect", icon:18) { if let target { model.visit(target) }; target = nil }
+            }
+    }
+}
+struct ClassicWalkerView: View {
+    @AppStorage("menuHoldMilliseconds") private var menuHoldMilliseconds = 1000
+    private var menuHoldSeconds: Double { Double([250,500,1000,1500,2000,3000].contains(menuHoldMilliseconds) ? menuHoldMilliseconds:1000)/1000 }
+    var initiallyClassic = true
+    var initialButton: Int32 = -1
+    @State private var classicOnly = true
+    @EnvironmentObject var model: WalkerModel
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var audio = ClassicAudio()
+    @State private var values = [Int32](repeating: 0, count: 40)
+    @State private var pixels = [UInt8](repeating: 0, count: 6144)
+    @State private var initialized = false
+    @State private var showPeers = false
+    @State private var showConsole = false
+    @State private var profile = ""
+    private let clock = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    private var milliseconds: UInt32 { UInt32(truncatingIfNeeded: UInt64(ProcessInfo.processInfo.systemUptime * 1000)) }
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                WalkerLCDShell(pixels:pixels,contrast:Int(values[20]),onPress:{ press(Int32($0)) },onCentreHold:{ press(3) }).frame(height:340)
+                Toggle("Classic mode",isOn:$classicOnly).tint(WalkerTheme.mint)
+                if !classicOnly {
+                    HStack {
+                        Button("◀") { press(0) }
+                        Button("●") { press(1) }
+                            .highPriorityGesture(LongPressGesture(minimumDuration:menuHoldSeconds).exclusively(before:TapGesture()).onEnded { action in
+                                switch action { case .first(true): press(3);case .second: press(1);default: break }
+                            })
+                        Button("▶") { press(2) }
+                    }
+                    WalkerDetailsView()
+                    if !model.message.isEmpty { Text(model.message).font(.callout) }
+                    Button("Back to app") { dismiss() }
+                }
+            }.padding().toolbar(.hidden,for:.navigationBar)
+                .sheet(isPresented:$showPeers) { NavigationStack { ConnectionChoiceView() }.environmentObject(model) }
+                .sheet(isPresented:$showConsole) { NavigationStack { SyncView() }.environmentObject(model) }
+        }
+        .onAppear { if !initialized { initialized=true;classicOnly=initiallyClassic;profile=model.selectedProfileID;values[19]=Int32(model.state.classicVolume ?? 2);values[20]=Int32(model.state.classicContrast ?? 1);press(initialButton) } }
+        .onReceive(clock) { _ in if !showPeers && !showConsole { press(-1) } }
+        .onDisappear { audio.stop() }
+    }
+    private func press(_ button:Int32) {
+        guard initialized, profile==model.selectedProfileID, model.usable else { audio.stop();return }
+        model.classicInput(button,values:&values,milliseconds:milliseconds)
+        guard model.usable else { audio.stop();return }
+        if values[10]>0 { let score=Int(values[10]-1);values[10]=0;audio.play(model.classicSound(score),volume:Int(values[19])) }
+        pixels=model.classicFrame(values,milliseconds:milliseconds)
+        if values[0]==10 { values[0]=0;showPeers=true;audio.stop() }
+        else if values[0]==8 && values[2]==1 { values[2]=0;showConsole=true;audio.stop() }
     }
 }

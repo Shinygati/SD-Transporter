@@ -19,7 +19,7 @@ for p in sorted(out.glob('*.c')):
  r=subprocess.run([str(x) for x in cmd],capture_output=True,text=True);log.append(p.name+'\n'+r.stdout+r.stderr)
  if r.returncode:print(log[-1]);(root/'build/build.log').write_text('\n'.join(log));sys.exit(1)
 elf=root/'Pokewalker-NDS.elf'
-cmd=[tool/('arm-none-eabi-gcc'+exe),'-specs='+str(calico/'share/ds9.specs')]+arch+['-L'+str(sdk/'lib'),'-L'+str(calico/'lib')]+objects+['-ldswifi9','-lfat','-lnds9','-lcalico_ds9','-lm','-Wl,--gc-sections','-Wl,-Map='+str(b/'walker.map'),'-o',elf]
+cmd=[tool/('arm-none-eabi-gcc'+exe),'-specs='+str(calico/'share/ds9.specs')]+arch+['-L'+str(sdk/'lib'),'-L'+str(calico/'lib')]+objects+['-ldswifi9','-lfat','-lnds9','-lcalico_ds9','-lm','-Wl,--wrap=dvmDiscCacheCreate','-Wl,--gc-sections','-Wl,-Map='+str(b/'walker.map'),'-o',elf]
 r=subprocess.run([str(x) for x in cmd],capture_output=True,text=True);log.append('link\n'+r.stdout+r.stderr);(root/'build/build.log').write_text('\n'.join(log),encoding='utf-8')
 if r.returncode:print(log[-1]);sys.exit(1)
 subprocess.run([str(dkp/'tools/bin'/('ndstool'+exe)),'-c',str(root/'Pokewalker-NDS.nds'),'-9',str(elf),'-7',str(calico/'bin/ds7_maine.elf'),'-b',str(calico/'share/nds-icon.bmp'),'Pokewalker;Virtual walker companion;SD Transporter'],check=True)

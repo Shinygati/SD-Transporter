@@ -18,7 +18,11 @@ final class WalkerStore {
     String token="",host="",pin="",pendingToken="",error="";
     int mode=2,rate=10,boot=-1;
     long sensorLast=-1,sensorElapsed;
-    boolean revoked,returnPending;
+    boolean revoked,returnPending,expandedItems,visitBlocked;
+    int classicVolume=2,classicContrast=1;
+    String battleSession="",battlePeer="";
+    boolean battlePaid,battleDone,battleRewarded;
+    int battleRewardChoice=-1,battleWinner;
     boolean returnCompleted;
     volatile boolean syncing;
     private volatile long syncEpoch;
@@ -42,6 +46,8 @@ final class WalkerStore {
     static String profileName(Context context){synchronized(LOCK){get(context);return profiles.name(instance.profileId);}}
     static WalkerStore selectProfile(Context context,String id)throws IOException{synchronized(LOCK){get(context);profiles.select(id);instance=profiles.store(id);return instance;}}
     static WalkerStore createProfile(Context context,String name)throws IOException{synchronized(LOCK){get(context);String id=profiles.create(name);instance=profiles.store(id);return instance;}}
+    static String visit(Context context,String id)throws IOException{synchronized(LOCK){get(context);return profiles.visit(instance.profileId,id);}}
+    static WalkerStore recoverVisits(Context context){synchronized(LOCK){instance=null;profiles=null;return get(context);}}
     static void renameProfile(Context context,String name)throws IOException{synchronized(LOCK){get(context);profiles.rename(instance.profileId,name);}}
     boolean tracking(){return active()&&mode!=0&&!returnPending&&!syncing&&error.isEmpty();}
     WalkerStore(File directory,String profileId) {
@@ -58,12 +64,17 @@ final class WalkerStore {
             sensorElapsed=in.readLong();revoked=in.readBoolean();
             try{returnPending=in.readBoolean();}catch(EOFException legacy){returnPending=false;}
             if(in.available()>0)trainerKey=in.readUTF();
+            if(in.available()>0)expandedItems=in.readBoolean();
+            if(in.available()>0){classicVolume=in.readInt();classicContrast=in.readInt();if(classicVolume<0||classicVolume>2||classicContrast<0||classicContrast>2)throw new IOException("Invalid display settings");}
+            if(in.available()>0){if(in.readInt()!=0x50425731)throw new IOException("Invalid battle record");battleSession=in.readUTF();battlePeer=in.readUTF();battlePaid=in.readBoolean();battleDone=in.readBoolean();battleRewarded=in.readBoolean();battleRewardChoice=in.readInt();battleWinner=in.readInt();if(!battleSession.isEmpty()&&!battleSession.matches("[a-f0-9]{32}"))throw new IOException("Invalid battle session");if(battleRewardChoice < -1 || battleRewardChoice>0x8218||battleWinner<0||battleWinner>3)throw new IOException("Invalid battle result");}
             if(!trainerKey.isEmpty()&&!trainerKey.matches("[a-f0-9]{36}"))throw new IOException("Invalid trainer binding");
             if(mode<0||mode>2||rate<1||rate>86400)throw new IOException("Invalid settings");
             if(data!=null && !Native.walkable(data))throw new IOException("Invalid or unregistered walker contents");
             if(!token.isEmpty() && completedSession(token)) {
+                if(deletedSession(token))trainerKey="";
                 data=null;token="";pendingToken="";returnPending=false;revoked=false;mode=0;returnCompleted=true;
             }
+            if(data==null && token.isEmpty() && !trainerKey.isEmpty() && latestSessionDeleted())trainerKey="";
         } catch(FileNotFoundException ignored) {
         } catch(Exception ex) {
             data=null;revoked=true;error="Saved state could not be opened: "+ex.getMessage();
@@ -96,6 +107,22 @@ final class WalkerStore {
             return true;
         }
     }
+    private boolean deletedSession(String session)throws IOException {
+        if(!completedSession(session))return false;
+        try(DataInputStream in=new DataInputStream(new AtomicFile(receiptFile(session)).openRead())){
+            byte[] magic=new byte[9];in.readFully(magic);return new String(magic,java.nio.charset.StandardCharsets.US_ASCII).equals("PWDELETE1");
+        }
+    }
+    private boolean latestSessionDeleted()throws IOException {
+        File dir=new File(file.getBaseFile().getParentFile(),"sessions");
+        File[] files=dir.listFiles(f->f.getName().matches("[a-f0-9]{32}\\.returned"));
+        if(files==null||files.length==0)return false;
+        // Ambiguous equal timestamps must not silently unbind a returned profile.
+        long newest=0;for(File f:files)newest=Math.max(newest,f.lastModified());
+        boolean deleted=false;
+        for(File f:files)if(f.lastModified()==newest){if(!deletedSession(f.getName().substring(0,32)))return false;deleted=true;}
+        return deleted;
+    }
     void completeReturn(String session,byte[] returned) throws IOException {
         retireSession(session,returned,false);
     }
@@ -118,7 +145,7 @@ final class WalkerStore {
         if(syncing)throw new IOException("Wait for sync to finish");
         if(data==null)throw new IOException("No active walker to delete");
         archiveCurrent("deleted");retireSession(token,data,true);
-        data=null;token="";pendingToken="";returnPending=false;revoked=false;mode=0;sensorLast=-1;
+        data=null;token="";pendingToken="";trainerKey="";returnPending=false;revoked=false;returnCompleted=false;mode=0;sensorLast=-1;boot=-1;
         save();
     }
     private static boolean matches(AtomicFile file,byte[] expected)throws IOException {
@@ -169,15 +196,19 @@ final class WalkerStore {
         for(File copy:sameWalker)if(remaining>10&&!copy.equals(destination)){if(!copy.delete())throw new IOException("Cannot remove oldest recovery copy");remaining--;}
         return destination;
     }
-    void save() throws IOException {
-        try {
+    byte[] encoded()throws IOException {
             ByteArrayOutputStream bytes=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(bytes);
             out.writeLong(0x5057414e44523101L);out.writeInt(data==null?0:data.length);
             if(data!=null)out.write(data);
             out.writeUTF(token);out.writeUTF(host);out.writeUTF(pin);out.writeUTF(pendingToken);
             out.writeInt(mode);out.writeInt(rate);out.writeInt(boot);out.writeLong(sensorLast);
-            out.writeLong(sensorElapsed);out.writeBoolean(revoked);out.writeBoolean(returnPending);out.writeUTF(trainerKey);out.flush();
-            writeVerified(file,bytes.toByteArray());error="";
+            out.writeLong(sensorElapsed);out.writeBoolean(revoked);out.writeBoolean(returnPending);out.writeUTF(trainerKey);out.writeBoolean(expandedItems);out.writeInt(classicVolume);out.writeInt(classicContrast);out.writeInt(0x50425731);out.writeUTF(battleSession);out.writeUTF(battlePeer);out.writeBoolean(battlePaid);out.writeBoolean(battleDone);out.writeBoolean(battleRewarded);out.writeInt(battleRewardChoice);out.writeInt(battleWinner);out.flush();
+            return bytes.toByteArray();
+    }
+    void save() throws IOException {
+        if(visitBlocked)throw new IOException("A profile connection needs recovery. Reopen saved state before continuing.");
+        try {
+            writeVerified(file,encoded());error="";
         } catch(IOException ex) {
             error="Could not save app state: "+ex.getMessage();throw ex;
         }

@@ -18,6 +18,10 @@ public class ProfileTest {
   if(Native.steps(a.data)!=31||Native.steps(b.data)!=25)throw new AssertionError("Timer isolation failed");
   long op=b.beginSync();boolean refused=false;try{WalkerStore.selectProfile(ctx,"default");}catch(IOException expected){refused=true;}if(!refused)throw new AssertionError("Switched during a transfer");b.finishSync(op);
   WalkerStore.selectProfile(ctx,"default");a.deleteActive();
+  if(!a.trainerKey.isEmpty()||a.active())throw new AssertionError("Delete retained trainer binding");
+  // Simulate the old build's successful delete journal, which kept its binding.
+  a.trainerKey="111111111111111111111111111111111111";a.save();
+  if(!StoreTest.reopen(dir).trainerKey.isEmpty())throw new AssertionError("Legacy deleted profile stayed trainer-bound");
   if(!b.active()||!Files.exists(b.file.getBaseFile().toPath()))throw new AssertionError("Deleting one profile cleared another");
   WalkerStore.selectProfile(ctx,bID);WalkerStore loaded=StoreTest.reopen(dir);
   if(!loaded.profileId.equals(bID)||!loaded.active()||!loaded.trainerKey.equals("222222222222222222222222222222222222"))throw new AssertionError("Selection or trainer binding lost on restart");

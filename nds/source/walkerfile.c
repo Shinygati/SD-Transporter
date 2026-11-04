@@ -110,6 +110,7 @@ unsigned walkerRoutePokemonId(const uint8_t *ee, unsigned i) {
     return i < 3 ? le16(ee + WALKER_ROUTE + 0x52 + i * 16) : 0;
 }
 unsigned walkerRouteItemId(const uint8_t *ee, unsigned i) {
+    if(i>=0x8001 && i<0x8000+537)return i&0x7fff;
     return i < 10 ? le16(ee + WALKER_ROUTE + 0x8c + i * 2) : 0;
 }
 static int validSpecies(unsigned id) { return id > 0 && id <= 493; }
@@ -303,9 +304,7 @@ int walkerStorePokemon(uint8_t *ee, unsigned choice, int slot, uint32_t now) {
     return 1;
 }
 int walkerStoreItem(uint8_t *ee, unsigned choice, int slot, uint32_t now) {
-    if (choice >= 10)
-        return 0;
-    unsigned id = le16(ee + WALKER_ROUTE + 0x8c + choice * 2);
+    unsigned id = walkerRouteItemId(ee,choice);
     if (!validItem(id))
         return 0;
     if (slot < 0)
@@ -356,6 +355,37 @@ int walkerChooseItem(uint8_t *ee, unsigned *out) {
         return 0;
     *out = selected;
     return 1;
+}
+/* Optional Gen IV rewards. Weights are per selection out of 10,000.
+ * Rows: Master Ball, PP Max, PP Up, TMs, vitamins, Rare Candy, EV training,
+ * evolution items, battle-held items, Heart Scale; remainder = course items.
+ * No key items, later-generation IDs or uploaded course edits are used. */
+int walkerExpandedReward(uint8_t *ee,unsigned *out,int battle) {
+    static const unsigned vitamins[]={45,46,47,48,49,52};
+    static const unsigned ev[]={215,289,290,291,292,293,294};
+    static const unsigned evolution[]={80,81,82,83,84,85,107,108,109,110,221,226,227,233,235,252,321,322,323,324,325,326,327};
+    static const unsigned held[]={214,220,232,234,253,266,267,268,270,271,275,287,297};
+    static const unsigned weights[2][10]={{1,9,20,170,300,50,50,100,50,50},{50,450,1000,3500,1000,500,500,500,500,500}};
+    unsigned roll=(walkerRandom(ee)>>3)%10000,group=0,id;
+    while(group<10 && roll>=weights[battle!=0][group]){roll-=weights[battle!=0][group];group++;}
+    switch(group){
+    case 0:id=1;break;case 1:id=53;break;case 2:id=51;break;
+    case 3:id=328+(walkerRandom(ee)>>3)%92;break;
+    case 4:id=vitamins[(walkerRandom(ee)>>3)%6];break;
+    case 5:id=50;break;
+    case 6:id=ev[(walkerRandom(ee)>>3)%7];break;
+    case 7:id=evolution[(walkerRandom(ee)>>3)%23];break;
+    case 8:id=held[(walkerRandom(ee)>>3)%13];break;
+    case 9:id=93;break;
+    default:return 0;
+    }
+    *out=0x8000|id;return 1;
+}
+int walkerChooseItemEx(uint8_t *ee,unsigned *out,int expanded) {
+    if(!expanded)return walkerChooseItem(ee,out);
+    WalkerInfo info;if(!walkerRead(ee,&info)||!info.hasPokemon)return 0;
+    if(walkerExpandedReward(ee,out,0))return 1;
+    return walkerChooseItem(ee,out);
 }
 static void join(uint8_t *ee, uint32_t now) {
     uint8_t id[104];
@@ -433,6 +463,7 @@ static void social(uint8_t *ee, uint32_t stamp, WalkerReport *r) {
 }
 static void rolloverDay(uint8_t *ee, uint32_t day) {
     if (day != meta(ee, M_DAY)) {
+        if(day>meta(ee,M_DAY))for(unsigned n=1;n<=10;n++)memset(ee+0xdc00+n*548+8,0xff,40);
         uint32_t prev = meta(ee, M_DAILY);
         uint32_t gap = day > meta(ee, M_DAY) ? day - meta(ee, M_DAY) : 7;
         if (gap >= 7)
@@ -715,4 +746,38 @@ void walkerBattleAction(uint8_t *ee, WalkerBattle *b, int action) {
         walkerRead(ee, &i);
         walkerSpend(ee, i.watts < 10 ? i.watts : 10);
     }
+}
+unsigned walkerFriendItemId(const uint8_t *ee,unsigned slot){
+    return slot<10?le16(ee+0xcec8+slot*4):0;
+}
+int walkerVisit(uint8_t *ee,const uint8_t *peer,uint32_t now){
+    WalkerInfo a,b;
+    if(!walkerRead(ee,&a)||!walkerRead(peer,&b)||!a.hasPokemon||!b.hasPokemon)return 0;
+    const uint8_t *ownId=reliable(ee,ID1,ID2,104),*otherId=reliable(peer,ID1,ID2,104);
+    if(!ownId||!otherId||!memcmp(ownId+16,otherId+16,40))return 0;
+    if(metaValid(ee)&&now/86400<meta(ee,M_DAY))return 0;
+    if(!metaValid(ee))walkerResume(ee,now,WALKER_DEFAULT_SECONDS_PER_STEP);
+    rolloverDay(ee,now/86400);
+    for(unsigned n=1;n<=10;n++)if(!memcmp(ee+0xdc00+n*548+8,otherId+16,40))return -1;
+    /* Original friend scoring, including 16-bit hourly arithmetic. */
+    uint32_t ownDay=meta(ee,M_DAILY),peerDay=metaValid(peer)&&meta(peer,M_DAY)==now/86400?meta(peer,M_DAILY):0;
+    unsigned ownHour=meta(ee,M_HOUR)==now/3600?meta(ee,M_HSTEPS):0;
+    unsigned peerHour=metaValid(peer)&&meta(peer,M_HOUR)==now/3600?meta(peer,M_HSTEPS):0;
+    uint32_t score=ownDay+peerDay+(uint16_t)((uint16_t)(ownHour+peerHour)*10);
+    if(score>20000)score=20000;
+    unsigned index=(score>=20000?0:score>=10000?2:score>=5000?4:score>=2500?6:8)+(ownDay>peerDay?0:1);
+    unsigned id=walkerRouteItemId(ee,index),slot=0;
+    while(slot<10&&walkerFriendItemId(ee,slot))slot++;
+    if(slot<10&&!validItem(id))return 0;
+    /* Preserve peer Trainer House data and the original ten-entry history. */
+    memcpy(ee+0xdc00,peer+0xcc00,548);memcpy(ee+0xdc08,otherId+16,40);
+    memmove(ee+0xdc00+548,ee+0xdc00,10*548);
+    memcpy(ee+0xf400,peer+0x91be,384);memcpy(ee+0xf580,peer+0x993e,320);
+    uint8_t *info=ee+0xf6c0;memset(info,0,56);putbe(info,peerDay);info[4]=peerHour>>8;info[5]=peerHour;
+    memcpy(info+8,otherId,4);memcpy(info+12,otherId+8,2);memcpy(info+14,peer+WALKER_ROUTE,2);
+    memcpy(info+16,peer+WALKER_ROUTE+16,22);memcpy(info+38,otherId+0x48,16);info[54]=peer[WALKER_ROUTE+13];
+    int result;
+    if(slot==10){unsigned watts=score/200;if(!watts)watts=1;if(watts>99)watts=99;wattsAdd(ee,watts);event(ee,4,watts);result=2;}
+    else {uint8_t *item=ee+0xcec8+slot*4;item[0]=id;item[1]=id>>8;item[2]=item[3]=0;diary(ee,now,index+1,0,id);event(ee,1,id);result=1;}
+    commitmeta(ee);return result;
 }

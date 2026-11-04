@@ -3,7 +3,9 @@
 #include <stdint.h>
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "walkerfile.h"
+#include "walkerclassic.h"
 #include "species.h"
 #define JNI_NAME(n) Java_io_github_sdtransporter_pokewalker_Native_##n
 static uint8_t *bytes(JNIEnv *env,jbyteArray data) {
@@ -54,9 +56,12 @@ JNIEXPORT jint JNICALL JNI_NAME(command)(JNIEnv *env,jclass cls,jbyteArray data,
     switch(op) {
     case 0:out=(int)((walkerRandom(ee)>>1)&0x7fffffff);break;
     case 1:out=walkerSpend(ee,(unsigned)arg);break;
-    case 2:out=walkerChooseItem(ee,&choice)?(int)choice:-1;break;
+    case 2:out=walkerChooseItemEx(ee,&choice,arg!=0)?(int)choice:-1;break;
     case 3:out=walkerStorePokemon(ee,(unsigned)arg&255,(arg>>8)-1,now);break;
     case 4:out=walkerStoreItem(ee,(unsigned)arg&255,(arg>>8)-1,now);break;
+    case 12:out=walkerChooseBattleItem(ee,&choice,arg!=0)?(int)choice:-1;break;
+    case 11:out=(int)walkerFriendItemId(ee,(unsigned)arg);break;
+    case 10:out=walkerStoreItem(ee,(unsigned)arg&65535,(arg>>16)-1,now);break;
     case 5:walkerClearEncounter(ee);out=1;break;
     case 6:out=(int)walkerPokemonId(ee,(unsigned)arg);break;
     case 7:out=(int)walkerItemId(ee,(unsigned)arg);break;
@@ -78,3 +83,59 @@ JNIEXPORT void JNICALL JNI_NAME(battle)(JNIEnv *env,jclass cls,jbyteArray data,j
     v[0]=b.playerHp;v[1]=b.enemyHp;v[2]=b.row;v[3]=b.finished;v[4]=b.caught;v[5]=(jint)b.encounter;v[6]=b.lastOutcome;
     (*env)->SetIntArrayRegion(env,state,0,7,v);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,0);
 }
+
+JNIEXPORT void JNICALL JNI_NAME(classicInput)(JNIEnv *env,jclass cls,jbyteArray data,jintArray state,jint button,jlong now,jlong ms,jboolean expanded){
+    (void)cls;if(!state||(*env)->GetArrayLength(env,state)!=40)return;
+    uint8_t *ee=bytes(env,data);if(!ee)return;jint values[40];(*env)->GetIntArrayRegion(env,state,0,40,values);
+    walkerClassicInput(ee,values,button,(uint32_t)now,(uint32_t)ms,expanded);
+    (*env)->SetIntArrayRegion(env,state,0,40,values);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,0);
+}
+JNIEXPORT jbyteArray JNICALL JNI_NAME(classicFrame)(JNIEnv *env,jclass cls,jbyteArray data,jintArray state,jlong ms){
+    (void)cls;if(!state||(*env)->GetArrayLength(env,state)!=40)return 0;
+    uint8_t *ee=bytes(env,data);if(!ee)return 0;jint values[40];uint8_t pixels[6144];
+    (*env)->GetIntArrayRegion(env,state,0,40,values);walkerClassicFrame(ee,values,pixels,(uint32_t)ms);
+    (*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);
+    jbyteArray out=(*env)->NewByteArray(env,6144);if(out)(*env)->SetByteArrayRegion(env,out,0,6144,(jbyte *)pixels);return out;
+}
+JNIEXPORT jshortArray JNICALL JNI_NAME(classicSound)(JNIEnv *env,jclass cls,jbyteArray data,jint score){
+    (void)cls;uint8_t *ee=bytes(env,data);if(!ee)return 0;
+    int16_t *pcm=malloc(220500*sizeof(*pcm));unsigned length=pcm?walkerClassicSound(ee,(unsigned)score,pcm,220500):0;
+    (*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);
+    jshortArray out=(*env)->NewShortArray(env,length);if(out&&length)(*env)->SetShortArrayRegion(env,out,0,length,(jshort *)pcm);free(pcm);return out;
+}
+
+JNIEXPORT jint JNICALL JNI_NAME(visit)(JNIEnv *env,jclass cls,jbyteArray data,jbyteArray peer,jlong now){
+    (void)cls;uint8_t *a=bytes(env,data);if(!a)return 0;uint8_t *b=bytes(env,peer);if(!b){(*env)->ReleaseByteArrayElements(env,data,(jbyte *)a,JNI_ABORT);return 0;}
+    int result=walkerVisit(a,b,(uint32_t)now);(*env)->ReleaseByteArrayElements(env,peer,(jbyte *)b,JNI_ABORT);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)a,0);return result;
+}
+
+JNIEXPORT jintArray JNICALL JNI_NAME(menuIcon)(JNIEnv *env,jclass cls,jint kind){
+    (void)cls;uint16_t rows[16];jint values[16];walkerMenuIcon((unsigned)kind,rows);for(int n=0;n<16;n++)values[n]=rows[n];
+    jintArray out=(*env)->NewIntArray(env,16);if(out)(*env)->SetIntArrayRegion(env,out,0,16,values);return out;
+}
+
+JNIEXPORT jbyteArray JNICALL JNI_NAME(peerExport)(JNIEnv *env,jclass cls,jbyteArray data){
+    (void)cls;uint8_t *ee=bytes(env,data);if(!ee)return 0;uint8_t packet[1688];int ok=walkerPeerExport(ee,packet);
+    (*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);if(!ok)return 0;jbyteArray out=(*env)->NewByteArray(env,1688);if(out)(*env)->SetByteArrayRegion(env,out,0,1688,(jbyte *)packet);return out;
+}
+JNIEXPORT jbyteArray JNICALL JNI_NAME(peerImport)(JNIEnv *env,jclass cls,jbyteArray data){
+    (void)cls;if(!data||(*env)->GetArrayLength(env,data)!=1688)return 0;uint8_t packet[1688];(*env)->GetByteArrayRegion(env,data,0,1688,(jbyte *)packet);
+    uint8_t *ee=malloc(65536);int ok=ee&&walkerPeerImport(packet,1688,ee);jbyteArray out=ok?(*env)->NewByteArray(env,65536):0;if(out)(*env)->SetByteArrayRegion(env,out,0,65536,(jbyte *)ee);free(ee);return out;
+}
+JNIEXPORT jintArray JNICALL JNI_NAME(friendlyStart)(JNIEnv *env,jclass cls,jbyteArray a,jbyteArray b,jint seed){
+    (void)cls;uint8_t *x=bytes(env,a);if(!x)return 0;uint8_t *y=bytes(env,b);if(!y){(*env)->ReleaseByteArrayElements(env,a,(jbyte *)x,JNI_ABORT);return 0;}
+    jint state[24];walkerFriendlyStart(x,y,state,(uint32_t)seed);(*env)->ReleaseByteArrayElements(env,b,(jbyte *)y,JNI_ABORT);(*env)->ReleaseByteArrayElements(env,a,(jbyte *)x,JNI_ABORT);
+    jintArray out=(*env)->NewIntArray(env,24);if(out)(*env)->SetIntArrayRegion(env,out,0,24,state);return out;
+}
+JNIEXPORT jboolean JNICALL JNI_NAME(friendlyTurn)(JNIEnv *env,jclass cls,jbyteArray a,jbyteArray b,jintArray board,jint ca,jint cb){
+    (void)cls;if(!board||(*env)->GetArrayLength(env,board)!=24)return 0;uint8_t *x=bytes(env,a);if(!x)return 0;uint8_t *y=bytes(env,b);if(!y){(*env)->ReleaseByteArrayElements(env,a,(jbyte *)x,JNI_ABORT);return 0;}
+    jint state[24];(*env)->GetIntArrayRegion(env,board,0,24,state);int ok=walkerFriendlyTurn(x,y,state,(unsigned)ca,(unsigned)cb);if(ok)(*env)->SetIntArrayRegion(env,board,0,24,state);
+    (*env)->ReleaseByteArrayElements(env,b,(jbyte *)y,JNI_ABORT);(*env)->ReleaseByteArrayElements(env,a,(jbyte *)x,JNI_ABORT);return ok;
+}
+JNIEXPORT jbyteArray JNICALL JNI_NAME(friendlyFrame)(JNIEnv *env,jclass cls,jbyteArray a,jbyteArray b,jintArray board,jint side,jint selected,jlong ms){
+    (void)cls;if(!board||(*env)->GetArrayLength(env,board)!=24)return 0;uint8_t *x=bytes(env,a);if(!x)return 0;uint8_t *y=bytes(env,b);if(!y){(*env)->ReleaseByteArrayElements(env,a,(jbyte *)x,JNI_ABORT);return 0;}
+    jint state[24];uint8_t pixels[6144];(*env)->GetIntArrayRegion(env,board,0,24,state);walkerFriendlyFrame(x,y,state,(unsigned)side,(unsigned)selected,pixels,(uint32_t)ms);
+    (*env)->ReleaseByteArrayElements(env,b,(jbyte *)y,JNI_ABORT);(*env)->ReleaseByteArrayElements(env,a,(jbyte *)x,JNI_ABORT);
+    jbyteArray out=(*env)->NewByteArray(env,6144);if(out)(*env)->SetByteArrayRegion(env,out,0,6144,(jbyte *)pixels);return out;
+}
+JNIEXPORT jstring JNICALL JNI_NAME(moveName)(JNIEnv *env,jclass cls,jint id){(void)cls;return (*env)->NewStringUTF(env,walkerMoveName((unsigned)id));}

@@ -2,7 +2,7 @@
 
 For app setup, activities, Wi-Fi handoffs and recovery, read [howtouse.txt](howtouse.txt).
 
-SD Transporter adds virtual cartridge support to TWiLight Menu++ and nds-bootstrap, allowing compatible Pokémon games to migrate or transfer Pokémon using ROMs and saves stored on the console SD card. It also provides a virtual Pokéwalker for HeartGold and SoulSilver, with companion applications for 3DS, DS/DSi and Android, plus an initial iPhone source port.
+SD Transporter adds virtual cartridge support to TWiLight Menu++ and nds-bootstrap, allowing compatible Pokémon games to migrate or transfer Pokémon using ROMs and saves stored on the console SD card. It also provides a virtual Pokéwalker for HeartGold and SoulSilver, with companion applications for 3DS, DS/DSi and Android, plus an iPhone source port.
 
 This is an independent homebrew project built on upstream open-source software. Game ROMs, saves, console firmware and retail Download Play applications are not distributed with the project.
 
@@ -36,11 +36,35 @@ The companions provide:
 - Steps, watts, current-stroll and lifetime counters, trainer information and the walking Pokémon's species name.
 - Poké Radar, attack/evade/catch battles, Dowsing, Pokémon/item storage and explicit replacement choices when the pack is full.
 - Walking events, including item discoveries and wild visitors.
-- The original large portrait and animation stored in the walker file, including original portrait crops. No retail sprite collection is bundled.
+- The original large portrait and animation stored in the walker file, including original portrait crops. No retail sprite collection is bundled. The phone shell uses the image supplied by the project owner; its LCD is replaced at runtime with current profile data.
 - `/roms`-only walker discovery on the console, readable menus, D-pad navigation and graphical progress indicators.
 - Registered empty walkers can walk and gain the course's original designated joining Pokémon, including its uploaded portrait. Blank/unregistered files and empty files without valid course data are refused. An existing companion is never replaced by automatic joining.
 
-These applications recreate supported normal-route activities. They do not run the original Pokéwalker firmware or claim exact hardware emulation. Encounters are shiny-locked. Special-event gift courses, device-to-device peer play and RAM-upload event commands are not implemented as a complete original feature set.
+The companions recreate Pokéwalker activities without executing retail firmware. Encounters are shiny-locked. On Android and iPhone, tap the Pokéwalker to open its original-style menu, three-button controls and uploaded sound scores. Progress is shared with the current profile. Display assets come from your own data; menu timing and piezo audio are recreated.
+
+**Visits and friendly battles:** connect two profiles on the same phone for a daily visit, or use Bluetooth LE between nearby Android/iPhone devices. Visits keep both partners in their profiles and save their gifts. Friendly battles are available only between phones and cost **30 watts per player** after both accept. They use the retained four moves, PP, power, accuracy and priority, with simplified health and status rules; full game stats, type matchups and special move effects are not simulated. Winners receive an item with higher rare-item rates. Entry and reward receipts survive restarts.
+
+**Optional expanded items:** off by default. Dowsing follows the setting for the current profile. Friendly-battle rewards expand only when **both phones** enable it. If either phone disables it, every battle reward comes from the current course's original item table, weighted toward its rarer entries. Different settings trigger a warning before acceptance or entry payment.
+
+| Item group | Dowsing find | Friendly-battle win |
+| --- | ---: | ---: |
+| Master Ball | 0.01% | 0.5% |
+| PP Max | 0.09% | 4.5% |
+| PP Up | 0.20% | 10% |
+| TM01–TM92, combined | 1.70% | 35% |
+| Vitamins: HP Up, Protein, Iron, Carbos, Calcium, Zinc | 3% | 10% |
+| Rare Candy | 0.5% | 5% |
+| EV training: Macho Brace and six Power items | 0.5% | 5% |
+| Evolution stones and held evolution items | 1% | 5% |
+| Battle held items | 0.5% | 5% |
+| Heart Scale | 0.5% | 5% |
+| Current course item table | 92% | 15% |
+
+Each item is equally likely within its group. Evolution rewards include the ten Gen IV stones, King's Rock, DeepSeaTooth, DeepSeaScale, Metal Coat, Dragon Scale, Up-Grade, Dubious Disc, Protector, Electirizer, Magmarizer, Reaper Cloth, Razor Claw and Razor Fang. The held-item group contains White Herb, Choice Band, Scope Lens, Leftovers, Shell Bell, Muscle Band, Wise Glasses, Expert Belt, Life Orb, Power Herb, Focus Sash, Choice Scarf and Choice Specs.
+
+Original-course battle weights are 30%, 25%, 15%, 12%, 8%, 5%, 2%, 1%, 1% and 1% for course slots 1–10. Invalid entries are omitted and weights are normalized. Course data is never rewritten. Ordinary Dowsing with expanded items disabled keeps the game's original course selection rules.
+
+**Special courses:** in the console companion's file list, press **Y**, choose the HGSS game and press **X**, then confirm with **A**. The companion validates the matching raw 512 KiB save, preserves a verified original under saves/transfers/backups/, enables that save language's supported special-course flags and updates the save checksum. Select an activated course in HGSS when sending a Pokémon. Ordinary watt-based course progression is unchanged. RAM-upload event commands and unsupported regional course entries are not enabled.
 
 ### Step sources
 
@@ -48,7 +72,7 @@ These applications recreate supported normal-route activities. They do not run t
 | --- | --- | --- |
 | 3DS | System pedometer on; timer off | System pedometer, time-based counter, or pause |
 | Android | Phone step sensor on; timer off | Phone step sensor, time-based counter, or pause |
-| iPhone (initial source port) | Core Motion pedometer on; timer off | Physical step history, foreground timer, or pause |
+| iPhone source port | Core Motion pedometer on; timer off | Physical step history, foreground timer, or pause |
 | DS/DSi | Time-based counter on | Time-based counter or pause |
 
 Each phone profile uses one step source at a time. The timer defaults to **one step every 10 seconds**. Missing physical sensors do not automatically enable timer-based steps.
@@ -57,7 +81,7 @@ On 3DS and DS/DSi, time-based walking counts while the selected walker is open, 
 
 The iPhone port queries Core Motion history from the current handoff baseline and credits it together with its saved journal; iOS supplies up to seven days of physical history. Its optional timer counts only while the app is active, excluding suspension and closed-app time. The iPhone app is supplied as source and requires an Apple SDK build. See [ios/README.md](ios/README.md).
 
-Current-stroll steps reset when HGSS returns the Pokémon; lifetime steps remain available on the trainer card. Available watts and pack contents return through HGSS's normal exchange. HGSS controls accumulated returned watts and course unlocks; the companions do not directly change course-unlock flags in the game save.
+Current-stroll steps reset when HGSS returns the Pokémon; lifetime steps remain available on the trainer card. Available watts and pack contents return through HGSS's normal exchange. HGSS controls accumulated returned watts and course unlocks; normal walking does not change course-unlock flags directly. The separate, confirmed special-course option described above edits only the supported special flags.
 
 ### Local Wi-Fi handoff
 
@@ -154,12 +178,12 @@ Recovery histories retain **10 snapshots per walker**, removing the oldest only 
 
 On consoles, **Settings → X** or **file list → SELECT** opens Recovery. **Y** changes walker history and **L/R** selects a snapshot. **START** opens selected-backup restoration; **A** confirms it. **SELECT** inside Recovery opens missing-file recovery from adjacent `.tmp`/`.bak` candidates. Phone Settings provides export/delete recovery controls. See [howtouse.txt](howtouse.txt) for full controls and interrupted-transfer recovery.
 
-## Mobile walker profiles and companion 1.4
+## Mobile profiles
 
 
 Android and the iPhone source app support several named walker profiles. The existing single walker remains in its original storage location as Walker 1. Each profile has a separate ownership journal, trainer binding, progress, pack, settings and recovery folder. Use **Walker profiles** to add, select or rename one. All active profiles earn steps; viewing another profile does not pause the others. Paused, revoked, pending-return and currently syncing profiles do not earn steps. Android's notification provides **Pause all**.
 
-After its first receive, a profile accepts only the same trainer name and public Trainer ID. Matching consoles check these before checkout, and phones verify the received data too. This intentionally treats saves with identical trainer names and IDs as the same trainer; existing session checks continue to protect returns. Update console and phone companions together. A returned or locally deleted profile retains its trainer binding and recovery history.
+After its first receive, a profile accepts only the same trainer name and public Trainer ID. Matching consoles check these before checkout, and phones verify the received data too. This intentionally treats saves with identical trainer names and IDs as the same trainer; existing session checks continue to protect returns. Update console and phone companions together. A returned profile retains its trainer binding. Deleting its active Pokémon clears that binding; recovery history remains available.
 
 Console Recovery now supports **START → Restore selected backup → A Confirm**, including over an existing empty walker. The current file is preserved first, trainer mismatches are refused, and an outstanding phone lease is revoked. This is deliberate recovery: an old checkpoint can duplicate Pokémon already received in HGSS. **SELECT** in the recovery browser selects missing-file recovery from adjacent `.tmp`, `.replace-old`, `.bak` and `.bak.tmp` candidates; START also offers it when no history snapshot is selected.
 
@@ -186,3 +210,9 @@ SD Transporter builds on **[TWiLight Menu++](https://github.com/DS-Homebrew/TWiL
 The project also uses work from devkitPro and its library contributors, bundled third-party libraries, and Pokémon/Pokéwalker research projects. **[CREDITS.md](CREDITS.md)** records source provenance, additional authors, research references and the locations of retained notices. Existing file-level authorship and licenses remain authoritative.
 
 See [LICENSE](LICENSE), the component license files and individual source notices. This independent project is not affiliated with or endorsed by Nintendo, Game Freak or The Pokémon Company.
+
+### Returning after local files were deleted
+
+Phone sync remains available when the console has no walker files. From the file list press **Y**, select the HGSS ROM under /roms, then **A** and confirm receiving the phone copy. This creates the matching missing save-folder destination and verifies the final .walker before acknowledging the return. If Android/iPhone reports a revoked old session, use its explicit phone-copy recovery confirmation with this console screen open. Existing active console files and other phone leases cannot be overwritten.
+
+Deleting a phone profile's active Pokémon clears its trainer-name/public-ID pairing. The next receive can bind that empty profile to another trainer. An ordinary successful return keeps the pairing. Recovery copies remain separate and do not appear as active Pokémon.

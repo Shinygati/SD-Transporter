@@ -82,3 +82,23 @@ The SwiftUI iPhone interface, Core Motion integration, flat C bridge, ownership 
 English item names use the original HGSS spellings recorded in the [pret/pokeheartgold item-name bank](https://github.com/pret/pokeheartgold/blob/master/files/msgdata/msg/msg_0222.gmm). Pokémon species names follow the factual National Pokédex mapping credited above. The tables identify game data; no retail message archive or ROM is distributed.
 
 The mobile profile catalogue, independent walking baselines, trainer-binding checks, recovery interface and phone battle presentation are SD Transporter additions. Pokémon battle images are decoded from the user-supplied walker; no retail sprite assets or firmware are bundled. Motion timing is recreated using the research references above. The DS companion uses the [libdvm filesystem library](https://github.com/devkitPro/libdvm), supplied by devkitPro under its upstream licences.
+
+## Version 1.5 references and platform components
+
+[mamba2410/reverse-pokewalker](https://github.com/mamba2410/reverse-pokewalker)
+and contributors provided additional hardware and firmware research references.
+The original-style interface, sound-score interpreter, daily visits, course
+activation and Bluetooth protocol were written for SD Transporter using the
+Pokéwalker references above. Firmware dumps and retail assets are not bundled.
+
+Move names and factual power, accuracy, PP, category and priority values in
+shared/movefacts.h were cross-checked against pret/pokeheartgold's move table
+and move-name message bank. The friendly-battle rules are project code, separate
+from HGSS battle simulation. Android Bluetooth APIs and Apple's CoreBluetooth
+framework are platform dependencies; their SDKs are not redistributed.
+
+The phone device shell image was supplied by the project owner for this update.
+The source image is unchanged; the displayed LCD is drawn over its sample screen at
+runtime. The original image creator/license has not been independently
+identified. This asset is not asserted to be GPL-licensed project artwork;
+existing image and hardware-design rights remain with their respective owners.

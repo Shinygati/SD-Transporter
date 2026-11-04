@@ -26,18 +26,67 @@ final class WalkerProfiles {
             if(data.available()!=0||!ids.contains(chosen))throw new IOException("Invalid selected profile");
             entries.clear();entries.addAll(loaded);selected=chosen;
         }catch(FileNotFoundException ignored){}catch(IOException ex){error="Profiles could not be opened: "+ex.getMessage();}
+        if(error.isEmpty())try{recoverVisit();}catch(IOException ex){error="Profile connection needs recovery: "+ex.getMessage();}
     }
     static boolean validID(String id){return id.equals("default")||id.matches("[a-f0-9]{32}");}
     WalkerStore store(String id){
         if(!stores.containsKey(id)){
             File directory=id.equals("default")?root:new File(new File(root,"profiles"),id);
-            WalkerStore value=new WalkerStore(directory,id);if(!error.isEmpty())value.error=error;
+            WalkerStore value=new WalkerStore(directory,id);if(!error.isEmpty()){value.error=error;value.visitBlocked=true;}
             stores.put(id,value);
         }
         return stores.get(id);
     }
     ArrayList<WalkerStore> all(){ArrayList<WalkerStore> list=new ArrayList<>();for(Entry e:entries)list.add(store(e.id));return list;}
     String name(String id){for(Entry e:entries)if(e.id.equals(id))return e.name;return "Walker";}
+    private File directory(String id)throws IOException {
+        boolean found=false;for(Entry e:entries)if(e.id.equals(id))found=true;
+        if(!validID(id)||!found)throw new IOException("Unknown connection profile");
+        return id.equals("default")?root:new File(new File(root,"profiles"),id);
+    }
+    private AtomicFile visitFile(){return new AtomicFile(new File(root,"profile-connection.bin"));}
+    private static byte[] read(AtomicFile file)throws IOException {
+        try(InputStream in=file.openRead();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            byte[] block=new byte[4096];int n;while((n=in.read(block))!=-1){if(out.size()+n>600000)throw new IOException("Connection journal too large");out.write(block,0,n);}return out.toByteArray();
+        }
+    }
+    private void recoverVisit()throws IOException {
+        byte[] record;try{record=read(visitFile());}catch(FileNotFoundException absent){return;}
+        DataInputStream in=new DataInputStream(new ByteArrayInputStream(record));int magic=in.readInt();
+        if(magic==0x50575630 && record.length==4)return;
+        if(magic!=0x50575631 || record.length<12)throw new IOException("Invalid connection journal");
+        CRC32 crc=new CRC32();crc.update(record,0,record.length-8);
+        if(new DataInputStream(new ByteArrayInputStream(record,record.length-8,8)).readLong()!=crc.getValue())throw new IOException("Connection journal checksum failed");
+        String[] ids=new String[2];byte[][] before=new byte[2][],after=new byte[2][];AtomicFile[] files=new AtomicFile[2];
+        for(int i=0;i<2;i++){
+            ids[i]=in.readUTF();if(i==1&&ids[0].equals(ids[1]))throw new IOException("Connection targets repeat");files[i]=new AtomicFile(new File(directory(ids[i]),"walker-state.bin"));
+            int size=in.readInt();if(size<1||size>150000)throw new IOException("Invalid connection baseline");before[i]=new byte[size];in.readFully(before[i]);
+            size=in.readInt();if(size<1||size>150000)throw new IOException("Invalid connection result");after[i]=new byte[size];in.readFully(after[i]);
+            byte[] current=read(files[i]);if(!Arrays.equals(current,before[i])&&!Arrays.equals(current,after[i]))throw new IOException("Profile changed during interrupted connection. Copies preserved.");
+        }
+        if(in.available()!=8)throw new IOException("Trailing connection data");
+        for(int i=0;i<2;i++)WalkerStore.writeVerified(files[i],after[i]);
+        WalkerStore.writeVerified(visitFile(),new byte[]{0x50,0x57,0x56,0x30});
+    }
+    String visit(String first,String second)throws IOException {
+        ready();if(first.equals(second))throw new IOException("Choose another profile");
+        WalkerStore a=store(first),b=store(second);
+        if(!a.active()||!b.active()||a.returnPending||b.returnPending||!a.error.isEmpty()||!b.error.isEmpty())throw new IOException("Both Pokemon must be active on this phone and not syncing");
+        a.save();b.save();a.archiveCurrent("connecting");b.archiveCurrent("connecting");
+        byte[] aa=a.data.clone(),bb=b.data.clone();int ar=Native.visit(aa,b.data,Native.now()),br=Native.visit(bb,a.data,Native.now());
+        if(ar==-1||br==-1)throw new IOException("These Pokewalkers already met today");
+        if(ar<=0||br<=0)throw new IOException("Two different registered Pokewalkers with partners are required");
+        byte[] beforeA=read(a.file),beforeB=read(b.file),afterA,afterB;
+        byte[] oldA=a.data,oldB=b.data;
+        try{a.data=aa;b.data=bb;afterA=a.encoded();afterB=b.encoded();}finally{a.data=oldA;b.data=oldB;}
+        ByteArrayOutputStream bytes=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(bytes);out.writeInt(0x50575631);
+        for(int i=0;i<2;i++){byte[] before=i==0?beforeA:beforeB,after=i==0?afterA:afterB;out.writeUTF(i==0?first:second);out.writeInt(before.length);out.write(before);out.writeInt(after.length);out.write(after);}out.flush();CRC32 crc=new CRC32();crc.update(bytes.toByteArray());out.writeLong(crc.getValue());out.flush();
+        try{
+            WalkerStore.writeVerified(visitFile(),bytes.toByteArray());recoverVisit();
+            a.data=aa;b.data=bb;a.archiveCurrent("connected");b.archiveCurrent("connected");
+        }catch(IOException ex){error="Profile connection needs recovery: "+ex.getMessage();for(WalkerStore s:all()){s.error=error;s.visitBlocked=true;}throw ex;}
+        return "The Pokemon played together. Both gifts were saved. Meet again tomorrow.";
+    }
     void ready()throws IOException{if(!error.isEmpty())throw new IOException(error);for(WalkerStore s:all())if(s.syncing)throw new IOException("Wait for the transfer to finish before changing profiles");}
     void save()throws IOException{
         ByteArrayOutputStream payload=new ByteArrayOutputStream();DataOutputStream out=new DataOutputStream(payload);

@@ -7,6 +7,7 @@
 #include "walkerfile.h"
 #include "species.h"
 #include "backups.h"
+#include "hgss_courses.h"
 #include <3ds.h>
 #include <dirent.h>
 #include <errno.h>
@@ -28,6 +29,7 @@
 #define MAX_WALKERS 128
 #define MAX_DIRS 1024
 static UIState ui;
+static char phoneTargets[MAX_WALKERS][512];
 static char recoveryPaths[MAX_WALKERS][512], backupTarget[512];
 static int recoveryCount;
 static char paths[MAX_WALKERS][512], folders[MAX_DIRS][512];
@@ -247,8 +249,8 @@ static int configSave(void) {
   int ok = fprintf(f,
                    "; One step source at a "
                    "time.\nCONFIG_VERSION=3\nSECONDS_PER_STEP=%u\nSTEP_COUNTER="
-                   "%d\nPEDOMETER=%d\n",
-                   ui.secondsPerStep, ui.walkingEnabled, ui.sensorEnabled) > 0;
+                   "%d\nPEDOMETER=%d\nEXPANDED_ITEMS=%d\n",
+                   ui.secondsPerStep, ui.walkingEnabled, ui.sensorEnabled, ui.expandedItems) > 0;
   if (fclose(f))
     ok = 0;
   return ok &&
@@ -284,6 +286,7 @@ static void configLoad(void) {
       ui.secondsPerStep = (unsigned)n;
     if (!strncasecmp(p, "STEP_COUNTER", 12))
       ui.walkingEnabled = n != 0;
+    if (!strncasecmp(p,"EXPANDED_ITEMS",14))ui.expandedItems=n==1;
     if (!strncasecmp(p, "PEDOMETER", 9))
       ui.sensorEnabled = n != 0;
   }
@@ -338,7 +341,7 @@ static __attribute__((noinline)) void rememberRecovery(const char *path) {
 }
 static void scanBegin(void) {
   syncStop();
-  recoveryCount=0;
+  recoveryCount=0;ui.phoneCount=ui.phoneCursor=0;
   if (directory) {
     closedir(directory);
     directory = 0;
@@ -398,6 +401,16 @@ static void scanStep(void) {
           snprintf(folders[folderCount++], 512, "%s", path);
         else
           ui.scanLimited = 1;
+      } else if(S_ISREG(st.st_mode) && ends(e->d_name,".nds")) {
+        unsigned char header[16];FILE *rom=fopen(path,"rb");
+        int hgss=rom && fread(header,1,sizeof(header),rom)==sizeof(header) && (!memcmp(header+12,"IPK",3)||!memcmp(header+12,"IPG",3));
+        if(rom)fclose(rom);
+        if(hgss && ui.phoneCount<MAX_WALKERS){
+          char target[512];size_t parent=strlen(folders[folderIndex]),stem=strlen(e->d_name)-4;
+          if(snprintf(target,sizeof(target),"%s/saves/%.*s.walker",folders[folderIndex],(int)stem,e->d_name)<(int)sizeof(target)){
+            (void)parent;snprintf(phoneTargets[ui.phoneCount++],512,"%s",target);
+          }
+        }
       } else if(S_ISREG(st.st_mode) && (ends(e->d_name,".bak") || ends(e->d_name,".tmp") || ends(e->d_name,".replace-old"))) {
         rememberRecovery(path);
       } else if (S_ISREG(st.st_mode) && ends(e->d_name, ".walker")) {
@@ -588,7 +601,7 @@ static void dowseStart(void) {
            "Keep strolling to earn another watt every 20 steps.");
     return;
   }
-  if (!walkerChooseItem(ee, &reward)) {
+  if (!walkerChooseItemEx(ee, &reward, ui.expandedItems)) {
     result("This route has no usable item data.",
            "Start a new stroll from HGSS to refresh the route data.");
     return;
@@ -838,6 +851,21 @@ static int backupInput(u32 down) {
   if((down & KEY_B) && ui.screen==UI_RECOVER_SAVE){backupsScan(backupTarget);ui.backupIndex=0;refreshBackups();ui.screen=UI_BACKUPS;return 1;}
   if(down & KEY_B){int browsing=ui.screen==UI_BACKUPS;ui.screen=browsing?backupReturnScreen:UI_BACKUPS;if(browsing)ui.selection=0;return 1;}
   if(ui.screen==UI_RESTORE_BACKUP) {
+    if(down & KEY_X) {
+      if(syncBusy()){notify("Wait for sync to finish.");return 1;}
+      if(opened>=0 && ui.loaded && !ui.phoneLocked && !syncSteps(0))return 1;
+      if(!backupsLoad(ui.backupIndex,scratch)){backupNotice("Cannot read selected recovery copy.");return 1;}
+      struct stat st;int status=stat(backupTarget,&st);
+      if(leaseInspect(backupTarget,0) || (!status && st.st_size) || (status && errno!=ENOENT)) {
+        backupNotice("Phone recovery needs a missing or empty target with no phone lock. Use normal Return for an existing handoff.");return 1;
+      }
+      int index=-1;for(int i=0;i<ui.count;i++)if(!strcmp(paths[i],backupTarget))index=i;
+      if(index<0){if(ui.count>=MAX_WALKERS){backupNotice("Walker list is full.");return 1;}index=ui.count++;snprintf(paths[index],512,"%s",backupTarget);}
+      if(!syncStartRecovery(backupTarget,scratch,onPhoneEvent)){backupNotice("Could not start Wi-Fi recovery. Check network settings.");return 1;}
+      opened=index;ui.loaded=0;ui.phoneLocked=1;dirty=0;ui.screen=UI_SYNC;
+      memset(ee,0xff,sizeof(ee));notify("On the phone choose Return Pokemon. Backup is only used to verify its identity.");
+      return 1;
+    }
     if(down & KEY_A) {
       if(opened>=0 && !ui.phoneLocked && ui.loaded && !syncSteps(0))return 1;
       if(!backupsLoad(ui.backupIndex,scratch)){backupNotice("This recovery copy could not be read.");return 1;}
@@ -874,14 +902,21 @@ static int backupInput(u32 down) {
   }
   if(ui.screen==UI_DELETE_ACTIVE) {
     if(down & KEY_A) {
-      char error[192];const char *path=backupTarget;
+      const char *path=backupTarget;
       int current=opened>=0 && !strcmp(paths[opened],path);
       unsigned char *data=current?ee:scratch;
-      if((current && ui.phoneLocked) || leaseInspect(path,0)) {
-        if(!leaseForceUnlock(path,error,sizeof(error))){notify(error);return 1;}
-        if(current)ui.phoneLocked=0;
-        if(!readFile(path,data)){notify("Could not read recovered walker. Deletion stopped.");return 1;}
-      } else if(!current && !readFile(path,data)) {notify("No active file exists for this recovery history.");return 1;}
+      int locked=leaseInspect(path,0);
+      if(locked<0){notify("Phone lock is damaged. Deletion stopped.");return 1;}
+      if(locked) {
+        /* Keep the verified checkout and zero-length return target. It is not
+         * an active console Pokemon; the phone still owns this session. */
+        WalkerLease loan;
+        if(leaseInspect(path,&loan)!=1 || loan.revoked){notify("Finish recovery before deleting this session.");return 1;}
+        ui.phoneLocked=current?1:ui.phoneLocked;
+        notify("The Pokémon is on your phone. Return is still available.");
+        ui.screen=current?UI_LOCKED:UI_BACKUPS;return 1;
+      }
+      if(!current && !readFile(path,data)){notify("No active file exists for this recovery history.");return 1;}
       if(!backupsPreserveActive(path,data)){notify("Could not preserve recovery copy. Deletion stopped.");return 1;}
       if(remove(path)){notify("Could not delete active walker. Recovery copy kept.");return 1;}
       if(current || opened<0){opened=-1;dirty=0;ui.loaded=ui.phoneLocked=0;scanBegin();}
@@ -909,7 +944,52 @@ static int backupInput(u32 down) {
   return 1;
 }
 static void input(u32 down) {
+  if(ui.screen==UI_LIST && (down&KEY_Y)){
+    if(!ui.phoneCount){notify("No HGSS ROM found under /roms. Rescan after adding the destination game.");return;}
+    syncStop();ui.phoneCursor=0;ui.screen=UI_PHONE_TARGET;return;
+  }
+  if(ui.screen==UI_PHONE_TARGET || ui.screen==UI_PHONE_RECEIVE_CONFIRM || ui.screen==UI_COURSE_CONFIRM){
+    if(down&KEY_B){ui.screen=ui.screen==UI_PHONE_TARGET?UI_LIST:UI_PHONE_TARGET;return;}
+    if(ui.screen==UI_PHONE_TARGET){
+      if((down&KEY_UP)&&ui.phoneCursor>0)ui.phoneCursor--;
+      if((down&KEY_DOWN)&&ui.phoneCursor+1<ui.phoneCount)ui.phoneCursor++;
+      if(down&KEY_A)ui.screen=UI_PHONE_RECEIVE_CONFIRM;
+      if(down&KEY_X)ui.screen=UI_COURSE_CONFIRM;
+      return;
+    }
+    if(ui.screen==UI_COURSE_CONFIRM){
+      if(down&KEY_A){
+        char message[192];int ok=hgssUnlockCourseFile(phoneTargets[ui.phoneCursor],replaceForLease,message,sizeof(message));
+        result(ok?"Courses ready":"Course unlock stopped",message);resultReturn=UI_LIST;
+      }
+      return;
+    }
+    if(down&KEY_A){
+      const char *target=phoneTargets[ui.phoneCursor];struct stat st;int status=stat(target,&st);
+      if(leaseInspect(target,0) || (!status&&st.st_size) || (status&&errno!=ENOENT)){
+        result("Return destination occupied.","Use normal Return for a phone-owned walker. A different active walker is never overwritten.");resultReturn=UI_LIST;return;
+      }
+      char parent[512];snprintf(parent,sizeof(parent),"%s",target);char *slash=strrchr(parent,'/');
+      if(!slash){notify("Invalid destination.");return;}*slash=0;
+      if(mkdir(parent,0777)&&errno!=EEXIST){notify("Cannot create saves folder.");return;}
+      int index=-1;for(int i=0;i<ui.count;i++)if(!strcmp(paths[i],target))index=i;
+      if(index<0){if(ui.count>=MAX_WALKERS){notify("Walker list is full.");return;}index=ui.count++;snprintf(paths[index],512,"%s",target);}
+      if(!syncStartRecovery(target,0,onPhoneEvent)){notify("Could not start Wi-Fi recovery.");return;}
+      opened=index;dirty=0;ui.loaded=0;ui.phoneLocked=1;ui.screen=UI_SYNC;memset(ee,0xff,sizeof(ee));
+      notify("On phone choose Return Pokemon. The returned file is verified before success.");
+    }
+    return;
+  }
   if(backupInput(down))return;
+  if(ui.screen==UI_REWARD_SETTINGS){
+    if(down & KEY_B){ui.screen=UI_SETTINGS;return;}
+    if(down & (KEY_A|KEY_X)){
+      int old=ui.expandedItems;ui.expandedItems=(down&KEY_A)!=0;
+      if(!configSave()){ui.expandedItems=old;notify("Settings save failed.");}
+      else notify(ui.expandedItems?"Expanded Dowsing enabled.":"Original rewards enabled.");
+    }
+    return;
+  }
   if(ui.screen==UI_LIST && (down & KEY_SELECT)){openGlobalBackups();return;}
   if (down & KEY_Y) {
     if (ui.saveError) {
@@ -1074,6 +1154,7 @@ static void input(u32 down) {
     if (down & KEY_A)
       homeAction();
   } else if (ui.screen == UI_SETTINGS) {
+    if(down & KEY_SELECT){ui.screen=UI_REWARD_SETTINGS;return;}
     if(down & KEY_X){openBackups();return;}
     if(down & KEY_TOUCH){touchPosition touch;hidTouchRead(&touch);if(touch.py>=198 && touch.py<219){openBackups();return;}}
     if ((down & KEY_UP) && ui.selection > 0)
@@ -1181,7 +1262,7 @@ static void input(u32 down) {
 int main(void) {
   if (!uiInit())
     return 1;
-  ui.paths = paths;
+  ui.paths = paths;ui.phonePaths=phoneTargets;
   ui.statuses = statuses;
   ui.ee = ee;
 #ifndef __NDS__

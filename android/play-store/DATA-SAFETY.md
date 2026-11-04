@@ -26,3 +26,12 @@ The Android manifest disables Android automatic app backup. Private journals and
 - Deletion: no developer server holds walker data. Local deletion/export and recovery retention must be described separately from any future account-deletion requirement.
 
 Revisit every row if transport, telemetry, permissions, cloud sync or SDK dependencies change.
+
+
+Version 1.5 adds foreground Bluetooth LE visits and friendly battles. Connected
+phones exchange compact partner/trainer records, uploaded sprite/name bitmaps,
+move data, step counters and activity messages. The full walker ownership image
+is not transferred by Bluetooth. Local entry/reward receipts prevent repeated
+charges and rewards. Discovery stops when leaving the nearby connection screen.
+The current apps do not require authenticated Bluetooth pairing or link
+encryption; do not claim that all data is encrypted in transit.

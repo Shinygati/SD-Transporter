@@ -1,5 +1,5 @@
 SD TRANSPORTER - POKEWALKER COMPANION USER GUIDE
-Updated: 3 November 2026
+Version 1.5 - Updated: 4 November 2026
 
 This guide covers the 3DS, NDS and Android companions and the iPhone source
 port. The phone apps use the same walker progress and activities. The iPhone
@@ -87,8 +87,8 @@ screen. Phone recovery copies remain accessible in Settings.
 Normal course encounters are shiny-locked. Walking events may find rewards
 and registered empty walkers may gain a course companion. These companions
 implement supported original-style activities; they do not execute original
-Pokewalker firmware. Special event courses and device-to-device peer features
-are not implemented as a complete original feature set.
+Pokewalker firmware. Sections 14-17 describe original-style controls, optional
+rewards, visits, Bluetooth battles and supported special-course activation.
 
 5. CONNECT CONSOLE AND PHONE
 
@@ -238,8 +238,8 @@ profile; Android's notification Pause all stops all profiles.
 A profile binds to the received trainer NAME and public Trainer ID. Later
 receives must match both. The console refuses a mismatch before checking out
 the walker; the phone also validates received data. Profiles retain their
-binding after returning or deleting their active Pokemon. Create another
-profile for a different trainer. Saves with identical trainer names and IDs
+binding after a normal return. Deleting the active Pokemon clears the binding;
+the empty profile can then receive from another trainer. Saves with identical trainer names and IDs
 are treated as the same trainer; these checks do not distinguish those saves.
 Existing per-session checks prevent returning through an unrelated handoff.
 Profile changes are blocked during a transfer.
@@ -266,3 +266,103 @@ retry/recovery. Keep its app data while retrying.
 
 A partial watt can finish in fewer than 20 additional steps. Subsequent full
 watts still require 20 steps; walking events may grant separate bonus watts.
+
+14. ORIGINAL-STYLE CONTROLS AND OPTIONAL REWARDS
+
+Tap the Pokewalker on the Android/iPhone home screen to open its original-style
+LCD and three buttons. Left/right select; the centre button confirms. Progress,
+catches, items, sound and contrast settings belong to the selected profile.
+The original uploaded graphics and sound scores are read from your own data.
+Retail firmware is not executed; audio and animation timing are recreated.
+
+Expanded items are OFF by default. Opt in under Settings on each phone profile,
+or press SELECT in console Settings for reward options (A enables, X disables).
+Dowsing uses the expanded rates in section 18. Normal walking events are unchanged.
+
+15. VISITS AND FRIENDLY BATTLES
+
+Choose Connect another Pokewalker, then Another profile or Nearby phone.
+Same-phone profiles can visit once per pair each day. Both gifts are saved
+together. Nearby visits and battles use Bluetooth LE, separate from console
+Wi-Fi transfers. Keep both apps open; choose the same activity on both phones,
+host on one and search/connect on the other. Grant Bluetooth permissions when
+asked. Older Android versions also require location permission for discovery;
+the app does not read your geographic location.
+
+Both players confirm a friendly battle before paying 30 watts each. Use the
+three controls to select and confirm retained moves. PP, power, accuracy and
+priority are used; status moves brace against the next attack. Full game stats,
+type matchups and other special effects are not simulated. Battle progress is
+separate from the Pokemon's HGSS stats. Only the winner receives an item; claim
+or leave a pending reward from Home before starting another battle or returning.
+Expanded battle rewards require opt-in on BOTH phones. Otherwise, all rewards
+come from the current course, with its rarer entries weighted more heavily.
+If settings differ, both apps warn before acceptance. See section 18 for rates.
+
+An interrupted paid battle can be resumed against the same partner without
+another entry charge; it starts a fresh battle board. Saved completed results
+are restored on retry. Visits and battles never move or replace either partner.
+
+16. RETURNING WHEN CONSOLE FILES ARE MISSING
+
+The console file list remains usable with no walker files. Press Y, select the
+matching HGSS ROM under /roms, press A, then confirm Receive phone copy with A.
+On the phone, select Return Pokemon. If a revoked-session recovery prompt is
+shown, follow it only with this console recovery screen open. The final .walker
+must exist and verify before success. An existing active Pokemon or another
+phone's lease is refused rather than replaced.
+
+On the phone, deleting an active Pokemon preserves a recovery copy and clears
+that profile's trainer pairing. A new receive can bind the empty profile to a
+different trainer. Returning normally keeps the original pairing.
+
+17. SPECIAL AND EVENT COURSES
+
+From the console file list press Y, choose the HGSS game, press X for Courses,
+then A to confirm. A matching raw 512 KiB HGSS save is required. The app validates
+its identity and checksums and preserves the original in saves/transfers/backups
+before enabling supported special-course flags. Select a course from HGSS when
+sending a Pokemon. Language-exclusive unsupported entries are left disabled;
+ordinary watt-based course progression remains unchanged.
+
+1.5 save checks cover missing-file returns, final-file verification, interrupted
+profile writes, malformed Bluetooth packets and storage alignment. Physical
+radio/console compatibility still depends on the device. Keep independent save
+backups and update the phone and console companions together.
+
+18. EXPANDED REWARD RATES
+
+Group                                  Dowsing       Battle win
+Master Ball                            0.01%         0.5%
+PP Max                                 0.09%         4.5%
+PP Up                                  0.20%         10%
+TM01-TM92 combined                      1.70%         35%
+HP Up, Protein, Iron, Carbos,
+Calcium and Zinc                        3%            10%
+Rare Candy                              0.5%          5%
+Macho Brace and six Power items         0.5%          5%
+Evolution stones/held evolution items   1%            5%
+Battle held items                       0.5%          5%
+Heart Scale                             0.5%          5%
+Original course items                   92%           15%
+
+Items are equally likely within a group. A battle winner receives one item.
+The battle column requires BOTH phones to enable Expanded Dowsing items.
+With either phone opted out, original course slots 1-10 have weights of
+30, 25, 15, 12, 8, 5, 2, 1, 1 and 1. Invalid slots are skipped and the remaining
+weights are normalized. Dowsing opt-out preserves original course rules.
+
+19. PHONE DISPLAY
+
+The device shell uses the exact image supplied by the project owner. Its
+sample Pikachu and counters are covered at runtime by the live LCD. Browsing
+keeps the current course scene, Pokemon, steps and pack indicators visible.
+Course, watts and named pack contents remain in the profile details. During
+battles only the LCD changes; the shell and buttons stay in place. Tap the
+device to enable Classic mode. Only the Pokewalker and the Classic mode
+toggle are shown. Tap the three buttons on the device image to navigate
+its menus. Hold the centre image button to return to the main LCD while browsing.
+Settings > Menu button hold offers 0.25, 0.5, 1, 1.5, 2 or 3 seconds (default: 1 second).
+This setting is saved on the phone and applies to every profile. Left and right wrap through menu options.
+Turn Classic mode off to show the navigation controls and profile details;
+choose Back to app to return to the full app controls.

@@ -13,3 +13,5 @@ deletion isolation, selected-profile persistence and failed catalogue writes.
 
 The normal application build also compiles the actual Android service/UI and
 native bridge. Host checks do not emulate Android sensors or lifecycle delivery.
+
+The 1.5 cases also exercise Bluetooth fragmentation, duplicate/order/checksum rejection, a fixed interoperability vector, 28 failed or silently dropped pair-journal writes and persistent battle entry/reward receipts. The host checks do not exercise phone radios.

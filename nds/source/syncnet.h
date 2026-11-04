@@ -4,6 +4,7 @@
 typedef int (*SyncBeforeCheckout)(void);
 typedef void (*SyncEvent)(int); /* 1=checked out, 2=returned */
 int syncStart(const char *, SyncBeforeCheckout, SyncEvent);
+int syncStartRecovery(const char *,const unsigned char *,SyncEvent);
 void syncPoll(void);
 void syncStop(void);
 int syncReady(void);

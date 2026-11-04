@@ -50,6 +50,13 @@ uint32_t walkerRandom(uint8_t *);
 int walkerSpend(uint8_t *, unsigned);
 int walkerChooseEncounter(uint8_t *, WalkerEncounter *);
 int walkerChooseItem(uint8_t *, unsigned *);
+int walkerExpandedReward(uint8_t *,unsigned *,int battle);
+int walkerChooseItemEx(uint8_t *,unsigned *,int expanded);
+/* Original peer gift/history update for ONE side. Call on two cloned images,
+ * then publish both through a transaction. 1=item, 2=watts, -1=already met,
+ * 0=invalid/same device/no partner/clock backwards. */
+int walkerVisit(uint8_t *,const uint8_t *,uint32_t);
+unsigned walkerFriendItemId(const uint8_t *,unsigned);
 int walkerStorePokemon(uint8_t *, unsigned, int, uint32_t);
 int walkerStoreItem(uint8_t *, unsigned, int, uint32_t);
 void walkerBattleStart(WalkerBattle *, unsigned);

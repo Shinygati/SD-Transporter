@@ -94,12 +94,13 @@ static void portrait(const uint8_t *ee, unsigned offset, int w, int h, int x,
     return;
   const uint16_t shades[] = {LCD, RGB(153, 180, 132), RGB(92, 126, 91),
                              RGB(43, 69, 57)};
+  int flip=w==32 && h==24 && offset>=0x91be && offset<0x933e && !(ee[WALKER_ROUTE+14]&1);
   for (int py = 0; py < h; py++)
     for (int px = 0; px < w; px++) {
       unsigned pos = offset + ((py / 8) * w + px) * 2, bit = py & 7;
       unsigned c = ((ee[pos] >> bit) & 1) * 2 + ((ee[pos + 1] >> bit) & 1);
       if (c)
-        ndsUiRect(x + px * scale, y + py * scale, scale, scale, shades[c]);
+        ndsUiRect(x + (flip?w-1-px:px) * scale, y + py * scale, scale, scale, shades[c]);
     }
 }
 int uiInit(void) {
@@ -259,14 +260,37 @@ void uiBottom(const UIState *s) {
     }
     if (s->scanLimited)
       text(8, 169, GOLD, "Search limit reached", 30);
-    footer("A Open SELECT Recovery X Scan");
+    footer("A Open Y Games SELECT Backups");
     return;
+  }
+  if(s->screen==UI_COURSE_CONFIRM){
+    header("Special courses");
+    wrap(8,35,INK,"Activate special/event courses supported by this HGSS save's language. Normal watt unlocks stay unchanged. The game save is verified and backed up first.",30,8);
+    wrap(8,132,GOLD,s->phonePaths[s->phoneCursor],30,3);footer("A Activate B Cancel");return;
+  }
+  if(s->screen==UI_PHONE_TARGET || s->screen==UI_PHONE_RECEIVE_CONFIRM){
+    header(s->screen==UI_PHONE_TARGET?"Return destination":"Receive phone copy?");
+    if(s->screen==UI_PHONE_TARGET){
+      for(int row=0;row<6;row++){int n=(s->phoneCursor/6)*6+row;if(n>=s->phoneCount)break;
+        const char *name=strrchr(s->phonePaths[n],'/');panel(8,36+row*22,240,20,n==s->phoneCursor);text(12,42+row*22,INK,name?name+1:s->phonePaths[n],29);
+      }
+      footer("A Phone X Courses B Cancel");
+    }else{
+      wrap(8,35,INK,"Use only if the console walker is missing. Receive the phone's current copy into this game's saves folder. An existing active walker cannot be overwritten.",30,8);
+      wrap(8,132,GOLD,s->phonePaths[s->phoneCursor],30,3);footer("A Receive phone B Cancel");
+    }return;
+  }
+  if(s->screen==UI_REWARD_SETTINGS) {
+    header("Dowsing rewards");
+    wrap(8,36,INK,"Optional expanded items: Master Ball 0.01%, PP Max 0.09%, PP Up 0.20%, TM01-92 1.70%. Remaining 98% uses original course rewards.",30,9);
+    fmt(8,141,TEAL,30,"Currently %s",s->expandedItems?"enabled":"disabled");
+    footer("A Opt in X Disable B Back");return;
   }
   if(s->screen==UI_RESTORE_BACKUP) {
     header("Restore selected backup?");
-    wrap(8,36,INK,"Current progress is backed up. Phone handoff is revoked. Old data may duplicate Pokemon already received in HGSS.",30,6);
+    wrap(8,36,INK,"A: Restore backup (revokes phone). X: Receive matching phone Pokemon into a missing target. Old data may duplicate Pokemon.",30,6);
     wrap(8,126,GOLD,s->backupName,30,3);
-    footer("A Restore backup B Cancel");return;
+    footer("A Restore X Phone B Cancel");return;
   }
   if(s->screen==UI_RECOVER_SAVE) {
     header("Recover interrupted save?");
@@ -279,7 +303,7 @@ void uiBottom(const UIState *s) {
     int active=s->screen==UI_DELETE_ACTIVE,confirm=s->screen!=UI_BACKUPS;
     header(active?"Delete active walker?":confirm?"Delete recovery copy?":"Recovery copies");
     if(confirm) {
-      wrap(8,40,INK,active?"Delete the active walker? A recovery copy is kept first. Any phone handoff on this console is revoked.":"Permanently delete this snapshot? Active data and ownership records are kept.",30,5);
+      wrap(8,40,INK,active?"Delete the active walker? A recovery copy is kept first. A walker on the phone keeps its return permission.":"Permanently delete this snapshot? Active data and ownership records are kept.",30,5);
       wrap(8,118,GOLD,active?s->backupWalker:s->backupName,30,3);
       footer("A Confirm delete B Cancel");
     } else {
@@ -389,7 +413,7 @@ void uiBottom(const UIState *s) {
     return;
   }
   const char *title = s->screen == UI_HOME       ? "Adventure menu"
-                      : s->screen == UI_SETTINGS ? "Settings 1.4-test"
+                      : s->screen == UI_SETTINGS ? "Settings 1.5"
                       : s->screen == UI_RADAR    ? "Poke Radar"
                       : s->screen == UI_DOWSE    ? "Dowsing"
                       : s->screen == UI_BATTLE   ? "Choose a move"
@@ -435,7 +459,7 @@ void uiBottom(const UIState *s) {
                                      : "Off");
       text(200, y + 8, TEAL, value, 5);
     }
-    panel(8,156,240,20,0);text(16,162,TEAL,"X Recovery copies / delete",28);
+    panel(8,156,240,20,0);text(16,162,TEAL,"X Backups  SELECT Rewards",28);
 
   } else if (s->screen == UI_RADAR || s->screen == UI_DOWSE) {
     int radar = s->screen == UI_RADAR, cols = radar ? 2 : 3;

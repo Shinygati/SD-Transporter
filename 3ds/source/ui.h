@@ -16,7 +16,7 @@ enum {
     UI_SYNC,
     UI_LOCKED,
     UI_FORCE,
-    UI_BACKUPS, UI_BACKUP_DELETE, UI_DELETE_ACTIVE, UI_RECOVER_SAVE, UI_RESTORE_BACKUP
+    UI_BACKUPS, UI_BACKUP_DELETE, UI_DELETE_ACTIVE, UI_RECOVER_SAVE, UI_RESTORE_BACKUP, UI_REWARD_SETTINGS, UI_PHONE_TARGET, UI_PHONE_RECEIVE_CONFIRM, UI_COURSE_CONFIRM
 };
 typedef struct {
     int screen, cursor, count, page, selection, selectedPatch, activePatch, attempts, round, rounds;
@@ -33,6 +33,9 @@ typedef struct {
     const uint8_t *statuses, *ee;
     WalkerInfo info;
     WalkerBattle battle;
+    const char (*phonePaths)[512];
+    int phoneCount, phoneCursor;
+    int expandedItems;
     int backupIndex, backupCount, backupLimited;
     char backupName[160], backupDetail[96], backupWalker[160];
 } UIState;

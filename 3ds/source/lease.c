@@ -251,7 +251,7 @@ int leaseCheckout(const char *p, const uint8_t token[16], uint8_t *snapshot,
   if (locked) {
     if (memcmp(existing.token, token, 16))
       return fail(error, size,
-                  "This walker belongs to a different phone session.");
+                  "This Pokémon belongs to a different phone session.");
     if (existing.revoked)
       return fail(error, size,
                   "Recovery is pending. Finish force-unlock first.");
@@ -322,9 +322,49 @@ static int validFinalWalker(const char *p) {
   uint8_t *data=malloc(WALKER_FILE_SIZE);WalkerInfo info;if(!data)return 0;
   int ok=readExact(p,data,WALKER_FILE_SIZE)&&walkerRead(data,&info)&&info.setUp;free(data);return ok;
 }
+/* A separately named receipt records an explicitly confirmed phone recovery.
+ * It does not remove the revoked session receipt or permit another checkout. */
+static int recoveredReceipt(const char *p,const uint8_t token[16],uint32_t crc,int write) {
+  char name[600],regular[600];uint8_t record[40]={0};struct stat st;
+  if(!sessionReceiptPath(regular,p,token,write))return -1;
+  if(snprintf(name,sizeof(name),"%s.phone-recovery",regular)>=(int)sizeof(name))return -1;
+  if(write) {
+    memcpy(record,"PWRECEIP",8);memcpy(record+8,token,16);put32(record+24,crc);put32(record+28,1);
+    put32(record+36,walkerCrc(record,36));
+    if(stat(name,&st) && errno==ENOENT) {if(!publish(name,record,sizeof(record)))return -1;}
+  }
+  if(stat(name,&st))return errno==ENOENT?0:-1;
+  return readExact(name,record,sizeof(record)) && validReceipt(record,token) && get32(record+28)==1 && get32(record+24)==crc?1:-1;
+}
+int leaseRecoverPhone(const char *p,const uint8_t token[16],const uint8_t *incoming,
+                      const uint8_t *baseline,char *error,unsigned size) {
+  /* Only the separate, explicitly opened console recovery listener calls this.
+   * The original backup is used as evidence, never loaded as an active walker. */
+  if(leaseInspect(p,0))return fail(error,size,"A phone session already owns this path. Use its normal return screen.");
+  uint32_t crc=walkerCrc(incoming,WALKER_FILE_SIZE);
+  int done=recoveredReceipt(p,token,crc,0);
+  if(done<0)return fail(error,size,"Phone recovery receipt differs or is damaged. Existing files kept.");
+  if(done==1)return validFinalWalker(p)?2:fail(error,size,"Final walker missing; recovery is not confirmed.");
+  if(baseline) {
+    if(!compatible(baseline,incoming))return fail(error,size,"Phone does not match this backup's trainer, stroll and companion.");
+  } else {
+    WalkerInfo info;char trainer[37];
+    if(!walkerRead(incoming,&info)||!info.registered||!walkerCanWalk(incoming)||!walkerTrainerKey(incoming,trainer))
+      return fail(error,size,"The phone copy is not a valid registered walker.");
+  }
+  if(!emptyOrSame(p,incoming))return fail(error,size,"An active console walker exists. Phone recovery will not overwrite it.");
+  if(!archive(p,token,"return",incoming) || !publish(p,incoming,WALKER_FILE_SIZE))
+    return fail(error,size,"Could not verify the recovered walker. Keep the phone copy and retry.");
+  if(recoveredReceipt(p,token,crc,1)!=1 || !sameFile(p,incoming))
+    return fail(error,size,"Recovery confirmation failed. Keep the phone copy and retry.");
+  return 1;
+}
 int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
                 char *error, unsigned size) {
   uint32_t crc = walkerCrc(incoming, WALKER_FILE_SIZE);
+  int recovered=recoveredReceipt(p,token,crc,0);
+  if(recovered<0)return fail(error,size,"Phone recovery receipt differs or is damaged.");
+  if(recovered==1)return validFinalWalker(p)?2:fail(error,size,"Final walker missing; return is not confirmed.");
   WalkerLease loan;
   int locked = leaseInspect(p, &loan), ack = receipt(p, token, crc, 0, 0);
   if (ack == 2)
@@ -338,7 +378,7 @@ int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
   if (locked != 1 || loan.revoked || memcmp(token, loan.token, 16))
     return fail(
         error, size,
-        "This is not the current phone session. Send the walker again.");
+        "This is not the current phone session. Send the Pokémon again.");
   char name[600];
   uint8_t *original = malloc(WALKER_FILE_SIZE);
   if (!original)
@@ -366,7 +406,7 @@ int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
   finish(p);
   if (leaseInspect(p, 0))
     return fail(error, size,
-                "Return saved; could not remove the lock. Retry sync.");
+                "Pokémon saved. Retry sync to finish unlocking the console.");
   if(!sameFile(p,incoming))return fail(error,size,"Final .walker verification failed after lock cleanup. The phone keeps its copy.");
   return 1;
 }

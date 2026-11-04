@@ -8,6 +8,7 @@ import SwiftUI
     @Published var busy = false
     @Published var storageBlocked = false
     @Published var foreground = false
+    private var peerOwnerToken="",peerOwnerProfile=""
     private var disk: WalkerDisk?
     private var catalog: WalkerCatalog?
     private var profileStates: [String: WalkerJournal] = [:]
@@ -24,6 +25,7 @@ import SwiftUI
     init() {
         do {
             let c = try WalkerCatalog(); catalog = c; profiles = c.entries; selectedProfileID = c.selected
+            try WalkerPairTransaction.recover(root: WalkerDisk().root, profiles: Set(c.entries.map(\.id)))
             for profile in profiles {
                 do { let d = try WalkerDisk(profileID: profile.id); profileDisks[profile.id] = d; profileStates[profile.id] = try d.load() }
                 catch { blockedProfiles.insert(profile.id); message = error.localizedDescription }
@@ -43,7 +45,12 @@ import SwiftUI
     func retryStorage() {
         do {
             guard let disk else { throw WalkerError.message("Restart after restoring storage access.") }
-            let saved = try disk.load(); state = saved; profileStates[selectedProfileID] = saved; blockedProfiles.remove(selectedProfileID); storageBlocked = false; message = "Saved state reopened."
+            try WalkerPairTransaction.recover(root: WalkerDisk().root, profiles: Set(profiles.map(\.id)))
+            for profile in profiles {
+                let d = try WalkerDisk(profileID: profile.id); profileDisks[profile.id] = d; profileStates[profile.id] = try d.load(); blockedProfiles.remove(profile.id)
+            }
+            if let saved = profileStates[selectedProfileID] { state = saved } else { state = try disk.load() }
+            storageBlocked = false; message = "Saved state reopened."
         } catch { message = error.localizedDescription }
     }
     func fail(_ error: Error) { message = error.localizedDescription }
@@ -60,7 +67,7 @@ import SwiftUI
             if !storageBlocked { try persist(state) }
             let id = try catalog.create(name); let d = try WalkerDisk(profileID: id); let empty = WalkerJournal(); try d.save(empty)
             profileDisks[id] = d; profileStates[id] = empty; profiles = catalog.entries
-            selectedProfileID = id; state = empty; disk = d; storageBlocked = false; message = "New profile. Receive its walker from a console."
+            selectedProfileID = id; state = empty; disk = d; storageBlocked = false; message = "Profile created. Receive a Pokémon from your console."
         } catch { profiles = catalog.entries; for profile in profiles where profileDisks[profile.id] == nil { blockedProfiles.insert(profile.id) }; fail(error) }
     }
     func renameProfile(_ name: String) {
@@ -70,6 +77,125 @@ import SwiftUI
         guard let value = profileStates[id] else { return "Storage needs attention" }
         guard let data = value.data else { return "No active Pokémon" }
         return WalkerCore.text(data, 3) + (value.returnPending ? " · Return pending" : value.revoked ? " · Revoked" : " · On phone")
+    }
+    func beginNearby() throws -> Data {
+        guard usable,let data=state.data else { throw WalkerError.message("Select an active Pokémon and finish syncing first.") }
+        guard (state.battleRewardChoice ?? -1)<0 else { throw WalkerError.message("Claim or leave your previous battle reward first.") }
+        tick();try persist(state)
+        let packet=try WalkerCore.peerPacket(state.data ?? data)
+        peerOwnerToken=state.token;peerOwnerProfile=selectedProfileID;busy=true;return packet
+    }
+    func endNearby() { peerOwnerToken="";peerOwnerProfile="";busy=false;refreshMotion() }
+    private func currentNearby() throws {
+        guard busy,!storageBlocked,peerOwnerProfile==selectedProfileID,peerOwnerToken==state.token,state.data != nil,!state.revoked,!state.token.isEmpty else { throw WalkerError.message("The selected Pokémon changed. Reconnect from its current profile.") }
+    }
+    private func commitNearby(_ next: WalkerJournal,reason: String) throws {
+        do { try disk?.archive(next,reason:reason);try persist(next) }
+        catch { blockedProfiles.insert(selectedProfileID);storageBlocked=true;throw error }
+    }
+    func nearbyVisit(_ peer: Data) throws {
+        try currentNearby()
+        var next=state
+        let result=peer.withUnsafeBytes { other in WalkerCore.mutate(&next.data!) { pw_visit($0,other.bindMemory(to:UInt8.self).baseAddress,WalkerCore.now) } }
+        guard result != 0 else { throw WalkerError.message("These Pokémon cannot visit.") }
+        if result == -1 { return }
+        try commitNearby(next,reason:"visited")
+    }
+    func nearbyPay(session: String,peer: String) throws {
+        try currentNearby()
+        var next=state
+        if next.battlePaid==true,next.battleDone != true,next.battlePeer==peer { next.battleSession=session;try persist(next);return }
+        if next.battlePaid==true,next.battleDone==true,next.battleSession==session { throw WalkerError.message("This battle is already complete.") }
+        guard (next.battleRewardChoice ?? -1)<0,WalkerCore.info(next.data)[5]>=30 else { throw WalkerError.message("Friendly battles need 30 watts. Claim any previous reward first.") }
+        guard WalkerCore.mutate(&next.data!,{pw_command($0,1,30,WalkerCore.now)}) == 1 else { throw WalkerError.message("Could not reserve the entry cost.") }
+        next.battleSession=session;next.battlePeer=peer;next.battlePaid=true;next.battleDone=false;next.battleRewarded=false;next.battleWinner=0;next.battleRewardChoice = -1
+        try commitNearby(next,reason:"battle-entry")
+    }
+    func nearbyFinish(session: String,result: Int,expandedEligible: Bool = false) throws {
+        try currentNearby()
+        guard state.battlePaid==true,state.battleSession==session else { throw WalkerError.message("Battle entry was not saved.") }
+        if state.battleDone==true { guard state.battleWinner==result else { throw WalkerError.message("Saved battle result differs.") };return }
+        var next=state
+        if result==1,next.battleRewarded != true {
+            let expanded: Int32=next.expandedItems==true && expandedEligible ? 1 : 0
+            let choice=WalkerCore.mutate(&next.data!){pw_command($0,12,expanded,WalkerCore.now)}
+            guard choice>=0 else { throw WalkerError.message("No valid reward data is available.") }
+            let saved=WalkerCore.mutate(&next.data!){pw_command($0,10,choice,WalkerCore.now)}
+            guard saved != 0 else { throw WalkerError.message("Battle reward could not be stored.") }
+            next.battleRewardChoice = saved<0 ? Int(choice) : -1
+        }
+        next.battleDone=true;next.battleWinner=result;next.battleRewarded=true;try commitNearby(next,reason:"battle-result")
+    }
+    func claimBattleReward(_ slot: Int?) {
+        guard usable,let choice=state.battleRewardChoice,choice>=0 else { return }
+        do {
+            var next=state
+            if let slot {
+                guard (0...2).contains(slot),WalkerCore.mutate(&next.data!,{pw_command($0,10,Int32(((slot+1)<<16)|choice),WalkerCore.now)})==1 else { throw WalkerError.message("Reward could not be stored.") }
+            }
+            next.battleRewardChoice = -1;try disk?.archive(next,reason:"battle-reward");try persist(next);message="Battle reward saved."
+        } catch { fail(error) }
+    }
+    var battleRewardName: String { guard let choice=state.battleRewardChoice,choice>=0 else { return "" };return rewardName(item:true,choice:choice) }
+    func classicInput(_ button: Int32, values: inout [Int32], milliseconds: UInt32) {
+        guard usable, values.count == 40, state.data != nil else { return }
+        do {
+            var next = state
+            let expanded: Int32 = next.expandedItems == true ? 1 : 0
+            WalkerCore.mutate(&next.data!) { _ = walkerClassicInput($0, &values, button, WalkerCore.now, milliseconds, expanded) }
+            let controls = next.classicVolume != Int(values[19]) || next.classicContrast != Int(values[20])
+            next.classicVolume = Int(values[19]); next.classicContrast = Int(values[20])
+            if next.data != state.data || controls {
+                if next.data?.subdata(in: 0xce8c..<0xcef0) != state.data?.subdata(in: 0xce8c..<0xcef0) { try disk?.archive(next, reason: "reward") }
+                try persist(next)
+            }
+        } catch { fail(error) }
+    }
+    func classicFrame(_ values: [Int32], milliseconds: UInt32) -> [UInt8] {
+        var pixels = [UInt8](repeating: 0, count: 6144)
+        guard let data = state.data, usable, values.count == 40 else { return pixels }
+        data.withUnsafeBytes { bytes in values.withUnsafeBufferPointer { input in walkerClassicFrame(bytes.bindMemory(to: UInt8.self).baseAddress, input.baseAddress, &pixels, milliseconds) } }
+        return pixels
+    }
+    func classicSound(_ index: Int) -> Data {
+        guard let data = state.data, !storageBlocked, !state.revoked, !state.returnPending else { return Data() }
+        var pcm = [Int16](repeating: 0, count: 220500)
+        let capacity = UInt32(pcm.count)
+        let count = data.withUnsafeBytes { walkerClassicSound($0.bindMemory(to: UInt8.self).baseAddress, UInt32(clamping: index), &pcm, capacity) }
+        guard count > 0 else { return Data() }
+        var wav = Data()
+        func word<T: FixedWidthInteger>(_ value: T) { var little = value.littleEndian; withUnsafeBytes(of: &little) { wav.append(contentsOf: $0) } }
+        wav.append(contentsOf: "RIFF".utf8);word(UInt32(count * 2 + 36));wav.append(contentsOf: "WAVEfmt ".utf8);word(UInt32(16));word(UInt16(1));word(UInt16(1));word(UInt32(22050));word(UInt32(44100));word(UInt16(2));word(UInt16(16));wav.append(contentsOf: "data".utf8);word(UInt32(count * 2));pcm.withUnsafeBytes { wav.append(contentsOf: $0.prefix(Int(count) * 2)) }
+        return wav
+    }
+    func visit(_ id: String) {
+        guard usable, id != selectedProfileID, let other = profileStates[id], canTrackForVisit(other, id), let ownDisk = disk, let peerDisk = profileDisks[id] else { message = "Both Pokemon must be active on this phone and not syncing."; return }
+        tick()
+        do {
+            var own = state
+            guard let peer = profileStates[id] else { return }
+            var otherNext = peer
+            try ownDisk.save(own); try peerDisk.save(peer)
+            try ownDisk.archive(own, reason: "connecting"); try peerDisk.archive(peer, reason: "connecting")
+            let a = peer.data!.withUnsafeBytes { peerBytes in WalkerCore.mutate(&own.data!) { pw_visit($0, peerBytes.bindMemory(to: UInt8.self).baseAddress, WalkerCore.now) } }
+            let b = state.data!.withUnsafeBytes { ownBytes in WalkerCore.mutate(&otherNext.data!) { pw_visit($0, ownBytes.bindMemory(to: UInt8.self).baseAddress, WalkerCore.now) } }
+            guard a != -1, b != -1 else { message = "These Pokewalkers already met today."; return }
+            guard a > 0, b > 0 else { message = "Two different registered Pokewalkers with partners are required."; return }
+            try WalkerPairTransaction.commit(root: WalkerDisk().root, first: (selectedProfileID, ownDisk, own), second: (id, peerDisk, otherNext), profiles: Set(profiles.map(\.id)))
+            profileStates[selectedProfileID] = own; state = own; profileStates[id] = otherNext
+            try ownDisk.archive(own, reason: "connected"); try peerDisk.archive(otherNext, reason: "connected")
+            objectWillChange.send(); message = "The Pokemon played together. Both gifts were saved. Meet again tomorrow."
+        } catch { blockedProfiles.formUnion(profiles.map(\.id)); storageBlocked = true; fail(error) }
+    }
+    private func canTrackForVisit(_ value: WalkerJournal, _ id: String) -> Bool { value.data != nil && !value.revoked && !value.returnPending && !value.token.isEmpty && !blockedProfiles.contains(id) }
+    func friendItem(_ slot: Int) -> String {
+        guard var data = state.data else { return "Empty" }
+        let id = WalkerCore.mutate(&data) { pw_command($0,11,Int32(slot),WalkerCore.now) }
+        return WalkerCore.item(Int64(id))
+    }
+    func setExpandedItems(_ enabled: Bool) {
+        guard !busy, !state.returnPending, !storageBlocked else { return }
+        do { var next = state; next.expandedItems = enabled; try persist(next) } catch { fail(error) }
     }
     func setForeground(_ value: Bool) {
         if !value { tick() }; foreground = value
@@ -130,8 +256,9 @@ import SwiftUI
         guard usable else { message = storageBlocked ? "Storage needs attention. Open Settings and Recovery copies." : "Finish syncing before using activities."; return -3 }
         do {
             var next = state
-            let result = WalkerCore.mutate(&next.data!) { pw_command($0, op, arg, WalkerCore.now) }
-            if (op == 3 || op == 4) && result > 0 { try disk?.archive(next, reason: "reward") }
+            let parameter: Int32 = op == 2 ? (next.expandedItems == true ? 1 : 0) : arg
+            let result = WalkerCore.mutate(&next.data!) { pw_command($0, op, parameter, WalkerCore.now) }
+            if (op == 3 || op == 4 || op == 10) && result > 0 { try disk?.archive(next, reason: "reward") }
             try persist(next); return Int(result)
         } catch { fail(error); return -3 }
     }
@@ -191,19 +318,21 @@ import SwiftUI
         do {
             try disk.archive(state, reason: "deleted")
             try disk.retire(state, kind: "deleted")
-            var next = state; next.data = nil; next.token = ""; next.pendingToken = ""; next.mode = 0; next.returnPending = false; next.revoked = false
+            var next = state; next.data = nil; next.token = ""; next.pendingToken = ""; next.trainerKey = nil; next.mode = 0; next.returnPending = false; next.revoked = false
             try persist(next)
             message = "Local walker deleted. Recovery copy kept. Use Recover on the console if it is still locked."
         } catch { storageBlocked = true; fail(error) }
     }
-    func sync(returning: Bool, host: String) async {
+    func sync(returning: Bool, host: String, recovery: Bool = false) async {
         guard !busy, !storageBlocked, ConsoleSync.validIP(host), state.syncConsent else { message = "Enter the console IP and accept the local-sync disclosure."; return }
-        guard returning ? active : !active else { message = returning ? "No active walker to return." : "Return your current walker before receiving another."; return }
+        guard returning ? (active || (recovery && state.data != nil && !state.token.isEmpty)) : !active else { message = returning ? "No Pokémon is available to return." : "Return your current Pokémon before receiving another."; return }
+        if returning,(state.battleRewardChoice ?? -1)>=0 { message="Claim or leave your battle reward before returning.";return }
         tick()
         busy = true
         defer { busy = false }
         do {
             guard let disk else { return }
+            if returning, try disk.retired(state.token) { throw WalkerError.message("This phone session was already returned or deleted.") }
             try disk.archive(state, reason: returning ? "returning" : "replaced")
             var prepared = state; prepared.host = host
             if prepared.trainerKey == nil, let data = prepared.data { prepared.trainerKey = WalkerCore.text(data, 4) }
@@ -229,6 +358,7 @@ import SwiftUI
                 next.data = nil; next.token = ""; next.pendingToken = ""; next.revoked = false; next.returnPending = false
             } else {
                 guard try !disk.retired(token) else { throw WalkerError.message("This phone session was already retired. Start a fresh handoff.") }
+                next.battleSession=nil;next.battlePeer=nil;next.battlePaid=nil;next.battleDone=nil;next.battleRewarded=nil;next.battleWinner=nil;next.battleRewardChoice=nil
                 next.trainerKey = WalkerCore.text(received, 4)
                 next.data = received; next.token = token; next.pendingToken = ""; next.revoked = false; next.returnPending = false
                 next.mode = 2; next.motionAnchor = Date(); next.motionCredited = 0

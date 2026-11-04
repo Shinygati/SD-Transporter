@@ -2,7 +2,7 @@
 
 Reviewed 3 November 2026. Developer: **Shinygati**. Public support and privacy contact: **anthoney1313@gmail.com**.
 
-These are preparation documents, not evidence of Google approval. Nothing has been submitted or published. The repository's educational, source-build policy remains in effect until the owner deliberately changes it.
+These are preparation documents, not evidence of Google approval. Nothing has been submitted or published. The packaged 1.5 APK is for direct installation; Play publication requires the preparation below.
 
 ## Work included
 
@@ -17,7 +17,7 @@ These are preparation documents, not evidence of Google approval. Nothing has be
 
 1. **Transport protection.** The current console protocol uses HTTP on port 30820. The session token is sent over that connection, so it does not provide encryption or protect against an observer on the local network. It transfers trainer information and step totals. Do not answer “all data encrypted in transit” in Data Safety. Assess and implement an authenticated encrypted transport compatible with the DS/3DS before requesting production review; a LAN-only disclaimer does not itself satisfy Google's sensitive-data policy.
 2. **Rights and branding.** Review the app title, icon and listing with the owner and establish rights for any third-party material used. Do not publish the supplied real walker, retail artwork, game screenshots, ROMs or extracted Download Play clients. A fan-project disclaimer is not permission from a rights holder. Use original demonstration graphics and synthetic data for store materials.
-3. **Release signing and bundle.** Establish a permanent upload key and Play App Signing, build a release AAB, inspect its generated APKs and test them. The current APK is a private test build. Never upload its private test keystore or a signing password to this repository. See `RELEASE-BUILD.md`.
+3. **Release signing and bundle.** Establish a permanent upload key and Play App Signing, build a release AAB, inspect its generated APKs and test them. Keep the current direct-install signing key private. Never upload a keystore or signing password to this repository. See `RELEASE-BUILD.md`.
 4. **Public privacy URL.** Host `privacy.html` at a stable, public HTTPS URL. This copy has not been hosted. Keep it consistent with the actual shipping code and Data Safety answers.
 5. **Account and review forms.** Complete the real account identity, app access, target audience, content rating, health/fitness, Data Safety and foreground-service declarations in Play Console. No answers have been submitted for the owner. Do not claim a medical or fitness benefit; steps drive a virtual-game companion.
 6. **Review access.** Supply a legal synthetic demonstration walker and precise reviewer instructions, or an approved demonstration mode. Reviewers need to reach Radar, Dowsing, steps and sync without obtaining a copyrighted game or save. No test walker is bundled with this build.
@@ -34,3 +34,5 @@ These are preparation documents, not evidence of Google approval. Nothing has be
 - [Foreground services](https://support.google.com/googleplay/android-developer/answer/18265346).
 
 Policies can change. Recheck the official pages before submission.
+
+Version 1.5 also uses Bluetooth LE for foreground nearby-phone visits and battles. Update permission, Data Safety and reviewer instructions for that exchange; console handoffs remain local HTTP. Personal contact details are omitted from the in-app About and Privacy pages; the public listing contact is managed separately.
