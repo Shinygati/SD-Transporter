@@ -162,7 +162,10 @@ struct WalkerPicture: View {
                     func sprite(_ offset: Int, _ x: CGFloat, _ flip: Bool) {
                         for py in 0..<24 { for px in 0..<32 {
                             let at = offset + ((py / 8) * 32 + px) * 2
-                            let color = Int(((data[at] >> (py & 7)) & 1) * 2 + ((data[at + 1] >> (py & 7)) & 1))
+                            let shift: Int = py & 7
+                            let highBit: Int = (Int(data[at]) >> shift) & 1
+                            let lowBit: Int = (Int(data[at + 1]) >> shift) & 1
+                            let color: Int = highBit * 2 + lowBit
                             if color != 0 { context.fill(Path(CGRect(x: ax + (x + CGFloat(flip ? 31-px:px)) * unit, y: ay + CGFloat(22 + py) * unit, width: unit, height: unit)), with: .color(palette[color])) }
                         } }
                     }
