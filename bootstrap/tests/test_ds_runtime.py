@@ -1,5 +1,5 @@
 from pathlib import Path
-import sys,struct,json
+import sys,struct,json,re
 from unicorn import Uc,UC_ARCH_ARM,UC_MODE_ARM,UC_HOOK_CODE
 from unicorn.arm_const import *
 ROOT=Path(__file__).resolve().parents[1]/'retail';OFF=json.loads((Path(__file__).resolve().parent/'build/offsets.json').read_text())
@@ -33,6 +33,9 @@ def call(u,addr,args):
  assert u.reg_read(UC_ARM_REG_PC)==STOP,'did not return'
  return u.reg_read(r0)
 
+payload_header=(ROOT/'common/include/walker_ds_payload.h').read_text()
+def payload_size(name):return int(re.search(r'#define '+name+r' (\d+)u',payload_header).group(1))
+PROTOCOL_SIZE=payload_size('WALKER_PROTOCOL_SIZE');STUB_SIZE=payload_size('WALKER_IR_STUB_SIZE')
 payload=(ROOT/'nitrofiles/walker_ds.bin').read_bytes();image=bytes((n*17+13)&255 for n in range(65536))
 
 def attach_media(u):
@@ -76,7 +79,7 @@ def installation(case='valid'):
   u.mem_write(CODE+0x900,struct.pack('<I',0xe92d47f0));u.mem_write(CODE+0x980,struct.pack('<4I',0xe7d60005,0xe22000aa,0xe7c60005,0xe2855001))
  if case=='no_room':put(u,MODULE+16,0x023d8000)
  if case=='wrong_game':u.mem_write(HEADER+12,b'CPUE')
- initial=bytes(u.mem_read(CODE+0x100,172));read_calls=[]
+ initial=bytes(u.mem_read(CODE+0x100,STUB_SIZE));read_calls=[]
  hooks={} if case=='fat_media' else {SYM['getFileFromCluster']&~1:'open',SYM['fileRead']&~1:'read'}
  if case=='fat_media':attach_media(u)
  def hook(uc,address,size,user):
@@ -92,11 +95,11 @@ def installation(case='valid'):
  c=get(u,CE+OFF['ce_walkerControl'])
  if case not in ('valid','patched_heap','fat_media'):
   assert c==0 and get(u,HEAP)==(0 if case=='missing_heap' else heap_before),(case,'failed installation changed heap')
-  assert bytes(u.mem_read(CODE+0x100,172))==initial,(case,'failed installation changed IR code')
+  assert bytes(u.mem_read(CODE+0x100,STUB_SIZE))==initial,(case,'failed installation changed IR code')
  else:
   base=get(u,HEAP);assert base==min(heap_before,0x023de000)-0x14000 and c==base+0x10000,(case,hex(base),hex(c),read_calls)
   assert bytes(u.mem_read(base,65536))==image
-  assert bytes(u.mem_read(base+0x11000,4312))==payload[:4312]
+  assert bytes(u.mem_read(base+0x11000,PROTOCOL_SIZE))==payload[:PROTOCOL_SIZE]
   assert get(u,CODE+0x100+0xa8)==base+0x12800
   assert get(u,CODE+0x100+0xa4)==c and get(u,CE+OFF['ce_walkerFlush'])==CODE+0x110
   assert get(u,CODE+0x200)==0xe51ff004 and get(u,CODE+0x300)==0xe3a000aa
@@ -105,7 +108,7 @@ def installation(case='valid'):
 
 for case in ['valid','patched_heap','fat_media','missing_heap','invalid_cached_heap','ambiguous','no_room','wrong_game','short_payload']:installation(case);print('Boot installation:',case,'passed')
 
-# Run the unmodified protocol through the installed DS dispatcher: SELECT
+# Run the production protocol through the installed DS dispatcher: SELECT
 # must start advertising; releasing it keeps the link armed until INIT.
 u,c=installation('fat_media');entry=get(u,HEAP)+0x12800;out=CODE+0x2000
 u.mem_write(0x04000130,struct.pack('<H',0x03ff))
@@ -157,3 +160,17 @@ assert u.mem_read(c+OFF['ctl_dirty'],1)==b'\0' and state['resets']==state['reads
 assert get(u,0x04000208)==1 and struct.unpack('<H',u.mem_read(0x04000204,2))[0]==0x1234
 old=state['writes'];call(u,base+0x12800,[c,0,0,0]);assert state['writes']==old
 print('Relocated DS runtime: coalesced writes, short-write refusal, read-back mismatch, retry, cache invalidation and device-owner restoration passed.')
+
+
+# The production ARM protocol must not announce final completion while its
+# EEPROM is still pending verified write-back.
+u,c=installation('valid');protocol=get(u,HEAP)+0x11000;out=CODE+0x2000
+put(u,c+OFF['ctl_writeSeq'],9);put(u,c+OFF['ctl_flushedSeq'],8)
+put(u,c+OFF['ctl_respLen'],8);u.mem_write(c+OFF['ctl_resp'],bytes([0x68])+bytes(7));u.mem_write(out,bytes([0x55])*8)
+assert call(u,protocol,[c,0,out,0])==0
+assert get(u,c+OFF['ctl_respLen'])==8 and bytes(u.mem_read(out,8))==bytes([0x55])*8
+put(u,c+OFF['ctl_flushedSeq'],9)
+assert call(u,protocol,[c,0,out,0])==8 and bytes(u.mem_read(out,1))==bytes([0x68])
+put(u,c+OFF['ctl_writeSeq'],10);put(u,c+OFF['ctl_respLen'],8);u.mem_write(c+OFF['ctl_resp'],bytes([4])+bytes(7))
+assert call(u,protocol,[c,0,out,0])==8 and bytes(u.mem_read(out,1))==bytes([4])
+print('Final completion ACK waits for verified storage; pending reply survives retry; nonfinal replies are unaffected.')

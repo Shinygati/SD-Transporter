@@ -216,3 +216,7 @@ See [LICENSE](LICENSE), the component license files and individual source notice
 Phone sync remains available when the console has no walker files. From the file list press **Y**, select the HGSS ROM under /roms, then **A** and confirm receiving the phone copy. This creates the matching missing save-folder destination and verifies the final .walker before acknowledging the return. If Android/iPhone reports a revoked old session, use its explicit phone-copy recovery confirmation with this console screen open. Existing active console files and other phone leases cannot be overwritten.
 
 Deleting a phone profile's active Pokémon clears its trainer-name/public-ID pairing. The next receive can bind that empty profile to another trainer. An ordinary successful return keeps the pairing. Recovery copies remain separate and do not appear as active Pokémon.
+
+## v1.5.1 update
+
+The rebuilt bootstrap spreads background EEPROM writes across frames and holds the final session-completion acknowledgement until verified write-back has completed. Source, binaries and build records are included. These safeguards address a specific RAM-to-disk completion window; they do not establish the cause of every reported lost Pokemon. See [the bootstrap build record](bootstrap/BUILD.md).

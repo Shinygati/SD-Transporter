@@ -41,7 +41,7 @@ int walkerTrainerKey(const uint8_t *, char out[37]);
 int walkerCanWalk(const uint8_t *);
 uint32_t walkerPendingSteps(const uint8_t *, uint32_t, uint32_t);
 uint32_t walkerCredit(uint8_t *, uint32_t, uint32_t);
-int walkerAddSteps(uint8_t *, uint32_t, uint32_t, WalkerReport *);
+int walkerAddSteps(uint8_t *image, uint32_t now, uint32_t steps, WalkerReport *report);
 int walkerResume(uint8_t *, uint32_t, uint32_t);
 int walkerAdvance(uint8_t *, uint32_t, uint32_t, WalkerReport *);
 unsigned walkerPendingEncounter(const uint8_t *);

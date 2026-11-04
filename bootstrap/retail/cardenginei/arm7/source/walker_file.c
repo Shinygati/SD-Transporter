@@ -30,6 +30,9 @@ bool walkerDue(bool force) {
 	WalkerControl *c = control();
 	if (!c || c->writeSeq == c->flushedSeq) return false;
 	if (force) return true;
+    /* A completion response is waiting on durable storage; start draining on
+     * this frame instead of waiting for the half-second coalescing delay. */
+    if (!c->state && c->respLen >= 8 && c->resp[0] == 0x68) return true;
 	if (c->writeSeq != walkerSeenSeq) {
 		walkerSeenSeq = c->writeSeq;
 		walkerIdleFrames = 0;
@@ -38,7 +41,7 @@ bool walkerDue(bool force) {
 	return ++walkerIdleFrames >= WALKER_IDLE_FRAMES;
 }
 
-void walkerWrite(void) {
+void walkerWrite(bool force) {
 	WalkerControl *c = control();
 	if (!c) return;
 	if (!walkerOpened) {
@@ -61,6 +64,15 @@ void walkerWrite(void) {
                 return;
             }
         }
+        /* A full dirty image can cost 128 checked SD operations. Do not put
+         * that entire burst into one VBlank during the transfer animation.
+         * Leave the rest due on the next frame, but forced reset/menu flushes
+         * still drain everything before their caller proceeds. */
+        if(!force) {
+            for(u32 pending=0;pending<WALKER_SECTORS;pending++) {
+                if(c->dirty[pending]) { walkerIdleFrames=WALKER_IDLE_FRAMES; return; }
+            }
+        }
 	}
 	c->flushedSeq = seq;
 	c->flushes++;
@@ -68,5 +80,5 @@ void walkerWrite(void) {
 }
 #else
 bool walkerDue(bool force) { (void)force; return false; }
-void walkerWrite(void) {}
+void walkerWrite(bool force) { (void)force; }
 #endif

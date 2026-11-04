@@ -6,7 +6,7 @@ r=Path(__file__).resolve().parents[1]/'retail';tool=Path(args.devkitarm)/'bin';s
 exe='.exe' if os.name=='nt' else ''
 loader=['walkerCluster','slot2RomCluster','gen5RomCluster','gen5SaveCluster','gen5RomSize','walkerPayloadOffset','walkerPayloadSize']
 ce=['walkerControl','walkerServices','walkerFlush','musicBuffer']
-ctl=['state','respLen','armed','writeSeq','flushedSeq','flushes','dirty','eeprom']
+ctl=['state','respLen','armed','writeSeq','flushedSeq','flushes','dirty','eeprom','resp']
 keys=['loader_'+x for x in loader]+['loader_size']+['ce_'+x for x in ce]+['ctl_'+x for x in ctl]
 s='#include <stddef.h>\n#include "load_crt0.h"\n#include "walker_emu.h"\nconst unsigned offsets[] = {'+','.join(['offsetof(loadCrt0,'+x+')' for x in loader]+['sizeof(loadCrt0)']+['offsetof(cardengineArm9,'+x+')' for x in ce]+['offsetof(WalkerControl,'+x+')' for x in ctl])+'};\n'
 (b/'offsets.c').write_text(s)

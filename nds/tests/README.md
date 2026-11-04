@@ -27,6 +27,9 @@ Run `python tests/test_handoff_ui.py` for the native screen guards. It executes 
 Run `python tests/test_save.py` after building to execute the linked save/load
 functions with deterministic card I/O. It refuses a silently dropped final
 replacement and reloads a caught Pokémon after clearing the emulated RAM.
+It also verifies the first earned watt preserves the partner after reloading,
+rejects accidental partner removal/replacement before writing, and checks that
+START cannot exit during a save or after a failed final-file verification.
 Run `python tests/test_direct_media.py` to verify that the installed libdvm
 zero-cache configuration returns the underlying media interface directly.
 These use synthetic data and do not read personal walker files.

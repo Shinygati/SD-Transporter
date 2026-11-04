@@ -485,6 +485,10 @@ u32 walkerEntry(WalkerControl *c, u32 op, u32 a, u32 b) {
 		u8 *out = (u8 *)a;
 		c->reads++;
 		if (c->respLen) {
+            /* Do not tell HGSS a session completed while the final EEPROM
+             * image still exists only in RAM. The ARM7 writer (or DS-mode
+             * dispatcher) advances flushedSeq only after verified storage. */
+            if (c->resp[0] == CMD_CONNECT_COMPLETE_ACK && c->writeSeq != c->flushedSeq) return 0;
 			c->idleReads = 0;
 			const u32 n = c->respLen;
 			copyBytes(out, c->resp, n);

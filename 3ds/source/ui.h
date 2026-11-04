@@ -38,6 +38,7 @@ typedef struct {
     int expandedItems;
     int backupIndex, backupCount, backupLimited;
     char backupName[160], backupDetail[96], backupWalker[160];
+    int saving;
 } UIState;
 int uiInit(void);
 void uiExit(void);

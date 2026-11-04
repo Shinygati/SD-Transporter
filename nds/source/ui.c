@@ -204,6 +204,13 @@ void uiBottom(const UIState *s) {
   cached[1] = key;
   valid[1] = 1;
   ndsUiBegin(1, BG);
+  if (s->saving) {
+    header("Saving...");
+    wrap(8, 42, INK, s->saveStage, 30, 3);
+    wrap(8, 90, GOLD, "Please wait. Keep the console on until saving finishes.", 30, 4);
+    footer("Controls locked while saving");
+    return;
+  }
   if (s->saveError) {
     header(s->discardPrompt ? "Discard changes" : "Save failed");
     if (s->discardPrompt) {
@@ -323,7 +330,7 @@ void uiBottom(const UIState *s) {
     fmt(8, 55, TEAL, 30, "%s:30820", s->syncAddress);
     wrap(8, 77, INK, s->syncStatus, 30, 6);
     wrap(8, 151, MUTED, "Use the same local Wi-Fi on both devices.", 30, 2);
-    footer(s->phoneLocked ? "B Back  X Force unlock" : "B Back  START Exit");
+    footer(s->phoneLocked ? "B Back  X Force unlock" : "B Back  START Save and exit");
     return;
   }
   if (s->screen == UI_LOCKED || s->screen == UI_FORCE) {
@@ -531,6 +538,7 @@ void uiBottom(const UIState *s) {
     footer("A Continue B Back");
     return;
   }
-  footer(s->screen == UI_SETTINGS ? "D-pad/A Change B Back"
+  footer(s->screen == UI_HOME ? "START Save and exit  B Back"
+         : s->screen == UI_SETTINGS ? "D-pad/A Change B Back"
                                   : "D-pad/Touch A Select B Back");
 }

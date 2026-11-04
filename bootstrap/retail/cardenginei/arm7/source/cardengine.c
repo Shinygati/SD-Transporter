@@ -1887,26 +1887,26 @@ void myIrqHandlerFIFO(void) {
 
 // Virtual GBA Slot-2 save and virtual Pokéwalker: write changed sectors back
 // to their files. Caller holds saveMutex.
-static void virtualFilesWriteLocked(bool slot2, bool walker) {
+static void virtualFilesWriteLocked(bool slot2, bool walker, bool force) {
 	if (!slot2 && !walker) return;
 	if (!(valueBits & b_dsiSD) || isSdEjected()) return;
 	driveInitialize();
 	sdmmc_set_ndma_slot(4);
 	saveTimer = 1;
 	if (slot2) slot2EmuWrite();
-	if (walker) walkerWrite();
+	if (walker) walkerWrite(force);
 	sdmmc_set_ndma_slot(0);
 }
 
 static void slot2EmuWriteLocked(void) {
 	const bool slot2 = slot2EmuDue(true), walker = walkerDue(true);
-	virtualFilesWriteLocked(slot2, walker);
+	virtualFilesWriteLocked(slot2, walker, true);
 }
 
 static void slot2EmuFlush(bool force) {
 	const bool slot2 = slot2EmuDue(force), walker = walkerDue(force);
 	if ((!slot2 && !walker) || !tryLockMutex(&saveMutex)) return;
-	virtualFilesWriteLocked(slot2, walker);
+	virtualFilesWriteLocked(slot2, walker, force);
 	unlockMutex(&saveMutex);
 }
 

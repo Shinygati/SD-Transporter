@@ -146,9 +146,16 @@ static int saveFailure(const char *stage, int code) {
   }
   return 0;
 }
-static int save(void) {
-  if (!dirty || opened < 0 || ui.phoneLocked)
-    return 1;
+static void savingStage(const char *stage) {
+  ui.saving = 1;
+  snprintf(ui.saveStage, sizeof(ui.saveStage), "%s", stage);
+  uiBegin(0);
+  uiTop(&ui);
+  uiBegin(1);
+  uiBottom(&ui);
+  uiEnd();
+}
+static int saveToDisk(void) {
   nativeFsError = 0;
   const char *p = paths[opened];
   char backup[544], temp[544], baktemp[544];
@@ -159,6 +166,16 @@ static int save(void) {
     return saveFailure("Reading original file", errno);
   if (walkerCrc(scratch, sizeof(scratch)) != diskCrc)
     return saveFailure("File changed outside this app", EAGAIN);
+  /* Companion activities may add a solo companion, never remove or replace
+   * an existing strolling partner. HGSS returns and explicit deletion have
+   * separate paths. Refuse a destructive in-memory image before any writes. */
+  WalkerInfo previous, updated;
+  if (!walkerRead(scratch, &previous) || !walkerRead(ee, &updated) ||
+      (previous.registered && !updated.registered) ||
+      (previous.hasPokemon &&
+       (!updated.hasPokemon || updated.species != previous.species)))
+    return saveFailure("Partner preservation check", EINVAL);
+  savingStage("Preserving the previous save...");
   if (!writeFile(baktemp, scratch))
     return saveFailure("Writing backup", errno);
   if (!readFile(baktemp, scratch))
@@ -167,12 +184,14 @@ static int save(void) {
     return saveFailure("Backup verification", EIO);
   if (sdRenameReplace(baktemp, backup, &nativeFsError))
     return saveFailure("Replacing backup", errno);
+  savingStage("Writing updated progress...");
   if (!writeFile(temp, ee))
     return saveFailure("Writing updated walker", errno);
   if (!readFile(temp, scratch))
     return saveFailure("Reading updated walker", errno);
   if (memcmp(scratch, ee, sizeof(ee)))
     return saveFailure("Walker verification", EIO);
+  savingStage("Publishing and verifying save...");
   if (sdRenameReplace(temp, p, &nativeFsError))
     return saveFailure("Replacing walker file", errno);
   if (!readFile(p, scratch) || memcmp(scratch, ee, sizeof(ee)))
@@ -181,6 +200,19 @@ static int save(void) {
   dirty = 0;
   ui.saveError = 0;
   return 1;
+}
+static int save(void) {
+  if (!dirty || opened < 0 || ui.phoneLocked)
+    return 1;
+  if (ui.saving)
+    return 0;
+  bool homeWasAllowed = aptIsHomeAllowed();
+  aptSetHomeAllowed(false);
+  savingStage("Checking the current save...");
+  int ok = saveToDisk();
+  ui.saving = 0;
+  aptSetHomeAllowed(homeWasAllowed);
+  return ok;
 }
 static void refresh(void) {
   ui.loaded = walkerRead(ee, &ui.info);
@@ -944,6 +976,8 @@ static int backupInput(u32 down) {
   return 1;
 }
 static void input(u32 down) {
+  if (ui.saving)
+    return;
   if(ui.screen==UI_LIST && (down&KEY_Y)){
     if(!ui.phoneCount){notify("No HGSS ROM found under /roms. Rescan after adding the destination game.");return;}
     syncStop();ui.phoneCursor=0;ui.screen=UI_PHONE_TARGET;return;
@@ -1284,6 +1318,10 @@ int main(void) {
     u32 down = hidKeysDown() | (hidKeysDownRepeat() &
                                 (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT));
     input(down);
+    /* START has already saved and verified. Do not advance walking or start
+     * another write after the user has requested a successful exit. */
+    if (quit)
+      break;
     if (ui.screen == UI_SCAN)
       scanStep();
     if (ui.screen == UI_RADAR) {
@@ -1345,7 +1383,7 @@ int main(void) {
   syncStop();
   if (directory)
     closedir(directory);
-  if (opened >= 0 && !ui.phoneLocked)
+  if (!quit && opened >= 0 && !ui.phoneLocked)
     syncSteps(0);
 #ifndef __NDS__
   if (ui.sensorAvailable)

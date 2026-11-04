@@ -408,6 +408,15 @@ static void tile(float x, float y, float w, float h, const char *a, const char *
 void uiBottom(const UIState *s) {
     bottomText = 1;
     background(320, s->frame);
+    if (s->saving) {
+        label(17, 12, .7f, INK, "Saving...", 290);
+        roundbox(12, 48, 296, 150, 8, PANEL);
+        paragraph(23, 60, .6f, INK, s->saveStage, 274, 3, 22);
+        paragraph(23, 128, .55f, GOLD,
+                  "Please wait. Keep the console on until saving finishes.", 274, 3, 20);
+        label(17, 221, .5f, INK, "Controls locked while saving", 287);
+        return;
+    }
     if (s->saveError) {
         label(17, 12, .7f, INK, s->discardPrompt ? "Discard changes?" : "Save failed", 290);
         roundbox(12, 48, 296, 125, 8, RGB(64, 29, 36));
@@ -539,7 +548,7 @@ void uiBottom(const UIState *s) {
         label(20, 77, .55f, GOLD, "Enter this IP on your phone.", 280);
         paragraph(20, 110, .55f, INK, s->syncStatus, 280, 3, 20);
         paragraph(20, 174, .55f, MUTED, "Keep both devices on the same local Wi-Fi.", 280, 2, 18);
-        label(17, 221, .55f, INK, s->phoneLocked ? "B Back  X Force unlock" : "B Back  START Exit",
+        label(17, 221, .55f, INK, s->phoneLocked ? "B Back  X Force unlock" : "B Back  START Save and exit",
               287);
         return;
     }
@@ -660,6 +669,7 @@ void uiBottom(const UIState *s) {
     if (s->screen != UI_RESULT)
         label(17, 222, .55f, INK,
               s->saveError ? "Y Retry save   ·   Keep app open"
+              : s->screen == UI_HOME ? "START Save and exit   B Back"
                            : "D-pad / Touch   A Select   B Back",
               287);
 }

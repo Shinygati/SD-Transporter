@@ -214,3 +214,7 @@ The `ios/` target requires macOS and Xcode to compile. Windows cannot compile th
 Windows users can sign/install the resulting IPA with AltServer/AltStore Classic. Follow [official Windows setup](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows). Free-account apps generally need refreshing every seven days. Return/export an active walker before uninstalling or changing signing identity. See [ios/README.md](ios/README.md) for dependencies, limitations and pending device checks. No compiled iOS app is included in this snapshot.
 
 For an Android production AAB, see [android/play-store/RELEASE-BUILD.md](android/play-store/RELEASE-BUILD.md). A private test APK is not a signed Play release bundle; production policy requirements remain in [the readiness report](android/play-store/README.md).
+
+## v1.5.1 build record
+
+The supplied bootstrap was rebuilt with devkitARM GCC 16.1 and an isolated libnds 1.8.3/libfat 1.1.5 legacy target SDK restored from the official `devkitpro/devkitarm:20241104` snapshot. This differs from the baseline r65 configuration above. See [the build record](bootstrap/BUILD.md#v151-console-write-back-rebuild-4-november-2026) for C++ include handling, native Windows shell tools, checks and stack margins. Do not mix this legacy SDK into the current Calico SDK used by the NDS companion.
