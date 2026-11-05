@@ -157,3 +157,5 @@ xcuserdata/
 
 # Private local Android signing key and password; never distribute.
 /.local-signing/
+
+/TWiLightMenu-27.25.1/slot1launch/build-cartwalker/

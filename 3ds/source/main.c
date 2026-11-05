@@ -36,9 +36,9 @@ static char paths[MAX_WALKERS][512], folders[MAX_DIRS][512];
 static uint8_t statuses[MAX_WALKERS], ee[WALKER_FILE_SIZE],
     scratch[WALKER_FILE_SIZE];
 static int folderCount, folderIndex, validateIndex, scanPhase, opened = -1,
-                                                               dirty, quit;
+                                                               dirty, quit, exitRequested, configDirty;
 static DIR *directory;
-static uint32_t diskCrc, lastSync, lastAdvance, nativeFsError, sensorBaseline;
+static uint32_t diskCrc, lastAdvance, nativeFsError, sensorBaseline;
 static int sensorBaselineValid;
 static int phase, hidden, emptyPatch, pendingKind = -1;
 static unsigned reward, gameChoice;
@@ -236,7 +236,7 @@ static int load(int index) {
   snprintf(ui.filename, sizeof(ui.filename), "%s", nameOf(paths[index]));
   return 1;
 }
-static int syncSteps(int show) {
+static int updateSteps(int show) {
   if (opened < 0 || !ui.loaded || ui.saveError)
     return 0;
   sampleSensor();
@@ -247,8 +247,6 @@ static int syncSteps(int show) {
     walkerAdvance(ee, now(), ui.secondsPerStep, &report);
   if (memcmp(scratch, ee, sizeof(ee)))
     dirty = 1;
-  if (!save())
-    return 0;
   refresh();
   if (show || report.events) {
     if (report.joined)
@@ -260,7 +258,7 @@ static int syncSteps(int show) {
     else if (report.clockBehind)
       notify("Clock is behind the last sync; progress is preserved.");
     else if (show && !report.steps && !report.events)
-      notify("Progress saved.");
+      notify("Press START to save and exit.");
     else {
       char text[160];
       snprintf(text, sizeof(text),
@@ -269,8 +267,7 @@ static int syncSteps(int show) {
       notify(text);
     }
   }
-  lastSync = now();
-  refresh();
+
   return 1;
 }
 static int configSave(void) {
@@ -288,6 +285,37 @@ static int configSave(void) {
   return ok &&
          sdRenameReplace(CONFIG_PATH ".tmp", CONFIG_PATH, &nativeFsError) == 0;
 }
+static int commitProgress(void) {
+  if (configDirty) {
+#ifndef __NDS__
+    bool homeWasAllowed = aptIsHomeAllowed();
+    aptSetHomeAllowed(false);
+#endif
+    savingStage("Writing settings...");
+    int ok = configSave();
+    int error = errno;
+    ui.saving = 0;
+#ifndef __NDS__
+    aptSetHomeAllowed(homeWasAllowed);
+#endif
+    if (!ok)
+      return saveFailure("Writing settings", error ? error : EIO);
+    configDirty = 0;
+  }
+  return save();
+}
+static void requestExit(void) {
+  if (syncBusy()) {
+    notify("Wait for the phone transfer to finish.");
+    return;
+  }
+  syncStop();
+  if (opened >= 0 && !ui.phoneLocked && !updateSteps(0))
+    return;
+  exitRequested = 1;
+  if (commitProgress())
+    quit = 1;
+}
 static void configLoad(void) {
   ui.secondsPerStep = WALKER_DEFAULT_SECONDS_PER_STEP;
 #ifdef __NDS__
@@ -299,7 +327,7 @@ static void configLoad(void) {
 #endif
   FILE *f = fopen(CONFIG_PATH, "r");
   if (!f) {
-    configSave();
+    configDirty = 1;
     return;
   }
   int version = 0;
@@ -333,7 +361,7 @@ static void configLoad(void) {
 #endif
     if (version < 2 && ui.secondsPerStep == 1)
       ui.secondsPerStep = WALKER_DEFAULT_SECONDS_PER_STEP;
-    configSave();
+    configDirty = 1;
   }
 #ifdef __NDS__
   ui.sensorEnabled = 0;
@@ -507,7 +535,7 @@ static void openWalker(void) {
   memcpy(scratch, ee, sizeof(ee));
   walkerResume(ee, now(), ui.secondsPerStep);
   dirty = memcmp(scratch, ee, sizeof(ee)) != 0;
-  lastAdvance = lastSync = now();
+  lastAdvance = now();
   rebaseSensor();
   refresh();
   notify(!ui.info.hasPokemon ? "Walking solo. A wild Pokémon may join."
@@ -523,7 +551,7 @@ static void transferredBack(const char *text) {
     walkerResume(ee, now(), ui.secondsPerStep);
     dirty = 1;
     rebaseSensor();
-    lastAdvance = lastSync = now();
+    lastAdvance = now();
     ui.screen = UI_HOME;
     refresh();
     notify(text);
@@ -532,7 +560,9 @@ static void transferredBack(const char *text) {
     scanBegin();
   }
 }
-static int beforePhoneCheckout(void) { return opened >= 0 && syncSteps(0); }
+static int beforePhoneCheckout(void) {
+  return opened >= 0 && updateSteps(0) && commitProgress();
+}
 static void onPhoneEvent(int event) {
   if (event == 1) {
     ui.phoneLocked = 1;
@@ -546,8 +576,6 @@ static void onPhoneEvent(int event) {
 static void startPhoneSync(void) {
   if (opened < 0)
     return;
-  if (!ui.phoneLocked && !syncSteps(0))
-    return;
   ui.screen = UI_SYNC;
   if (!syncStart(paths[opened], beforePhoneCheckout, onPhoneEvent))
     snprintf(ui.syncStatus, sizeof(ui.syncStatus),
@@ -555,7 +583,6 @@ static void startPhoneSync(void) {
 }
 static void endGame(const char *a, const char *b) {
   dirty = 1;
-  if (!save()) { refresh(); return; }
   refresh();
   result(a, b);
 }
@@ -593,8 +620,6 @@ static void radarStart(void) {
   if (visitor) {
     walkerClearEncounter(ee);
     dirty = 1;
-    if (!save())
-      return;
     walkerBattleStart(&ui.battle, visitor - 1);
     ui.screen = UI_BATTLE;
     ui.selection = 0;
@@ -615,8 +640,6 @@ static void radarStart(void) {
   }
   walkerSpend(ee, 10);
   dirty = 1;
-  if (!save())
-    return;
   gameChoice = encounter.index;
   ui.round = 0;
   ui.rounds = 3 - (int)encounter.index + ((walkerRandom(ee) >> 3) & 1);
@@ -645,8 +668,6 @@ static void dowseStart(void) {
   ui.attempts = 2;
   ui.activePatch = -1;
   dirty = 1;
-  if (!save())
-    return;
   ui.screen = UI_DOWSE;
   message("An item is hidden in one of these six patches.");
 }
@@ -666,11 +687,10 @@ static void rewardStore(int kind, unsigned which) {
     return;
   }
   if (ok) {
-    if (!backupsPreserveReward(paths[opened],ee)) { saveFailure("Preserving caught reward", EIO); refresh(); return; }
     char title[96];
     snprintf(title,sizeof(title),kind?"You found %s!":"You caught %s!",
              kind?itemName(walkerRouteItemId(ee,which)):speciesName(walkerRoutePokemonId(ee,which)));
-    endGame(title,"Saved to card. It is in your pack, ready for HGSS.");
+    endGame(title,"In your pack. Press START to save before returning to HGSS.");
   } else
     endGame("The reward data was not usable.", "No Pokémon or item was added.");
 }
@@ -761,7 +781,7 @@ static void homeAction(void) {
     ui.screen = UI_CARD;
     break;
   case 4:
-    syncSteps(1);
+    updateSteps(1);
     break;
   case 5:
     ui.screen = UI_SETTINGS;
@@ -771,7 +791,7 @@ static void homeAction(void) {
 }
 static void changeRate(int direction) {
   static const unsigned rates[] = {1, 2, 5, 10, 30, 60, 300, 3600, 86400};
-  if (!syncSteps(0))
+  if (!updateSteps(0))
     return;
   int i = 0;
   while (i < 8 && rates[i] < ui.secondsPerStep)
@@ -781,18 +801,13 @@ static void changeRate(int direction) {
     i = 0;
   if (i > 8)
     i = 8;
-  unsigned old = ui.secondsPerStep;
   ui.secondsPerStep = rates[i];
-  if (!configSave()) {
-    ui.secondsPerStep = old;
-    notify("Could not write the settings file.");
-  } else
-    notify("Rate saved.");
+  configDirty = 1;
+  notify("Rate changed. Press START to save.");
 }
 static void changeStepSource(int sensor) {
-  if (!syncSteps(0))
+  if (!updateSteps(0))
     return;
-  int oldTime = ui.walkingEnabled, oldSensor = ui.sensorEnabled;
   if (sensor) {
     if (!ui.sensorAvailable) {
       notify("Pedometer unavailable on this device.");
@@ -805,20 +820,23 @@ static void changeStepSource(int sensor) {
     ui.walkingEnabled = !ui.walkingEnabled;
     ui.sensorEnabled = !ui.walkingEnabled && ui.sensorAvailable;
   }
-  if (!configSave()) {
-    ui.walkingEnabled = oldTime;
-    ui.sensorEnabled = oldSensor;
-    notify("Could not save settings.");
-    return;
-  }
+  configDirty = 1;
   walkerResume(ee, now(), ui.secondsPerStep);
   dirty = 1;
   rebaseSensor();
-  lastAdvance = lastSync = now();
+  lastAdvance = now();
   refresh();
   notify(ui.walkingEnabled  ? "Time-based walking enabled."
          : ui.sensorEnabled ? "Pedometer walking enabled."
                             : "Walking paused.");
+}
+static void closeWalker(void) {
+  syncStop();
+  opened = -1;
+  dirty = 0;
+  ui.screen = UI_LIST;
+  load(ui.cursor);
+  message("");
 }
 static void back(void) {
   if (ui.saveError) {
@@ -832,19 +850,17 @@ static void back(void) {
     return;
   }
   if (ui.screen == UI_HOME) {
-    if (!syncSteps(0))
+    if (!updateSteps(0))
       return;
-    syncStop();
-    opened = -1;
-    ui.screen = UI_LIST;
-    load(ui.cursor);
-    message("");
+    if (dirty) {
+      message("Leave without saving?");
+      snprintf(ui.detail, sizeof(ui.detail),
+               "Walking progress and rewards will be discarded. Press START to save and exit.");
+      ui.screen = UI_DISCARD_WALKER;
+    } else {
+      closeWalker();
+    }
     return;
-  }
-  if (ui.screen == UI_RADAR || ui.screen == UI_DOWSE ||
-      ui.screen == UI_BATTLE) {
-    dirty = 1;
-    save();
   }
   ui.screen = UI_HOME;
   ui.selection = 0;
@@ -864,7 +880,7 @@ static void refreshBackups(void) {
 static void openBackups(void) {
   if(opened<0)return;
   if(syncBusy()){notify("Wait for the transfer to finish first.");return;}
-  if(!ui.phoneLocked && !syncSteps(0))return;
+  if(!ui.phoneLocked && !updateSteps(0))return;
   backupReturnScreen=ui.phoneLocked?UI_LOCKED:UI_SETTINGS;
   syncStop();snprintf(backupTarget,sizeof(backupTarget),"%s",paths[opened]);backupsScan(backupTarget);ui.backupIndex=0;refreshBackups();ui.screen=UI_BACKUPS;
 }
@@ -885,7 +901,7 @@ static int backupInput(u32 down) {
   if(ui.screen==UI_RESTORE_BACKUP) {
     if(down & KEY_X) {
       if(syncBusy()){notify("Wait for sync to finish.");return 1;}
-      if(opened>=0 && ui.loaded && !ui.phoneLocked && !syncSteps(0))return 1;
+      if(opened>=0 && ui.loaded && !ui.phoneLocked && !updateSteps(0))return 1;
       if(!backupsLoad(ui.backupIndex,scratch)){backupNotice("Cannot read selected recovery copy.");return 1;}
       struct stat st;int status=stat(backupTarget,&st);
       if(leaseInspect(backupTarget,0) || (!status && st.st_size) || (status && errno!=ENOENT)) {
@@ -899,7 +915,7 @@ static int backupInput(u32 down) {
       return 1;
     }
     if(down & KEY_A) {
-      if(opened>=0 && !ui.phoneLocked && ui.loaded && !syncSteps(0))return 1;
+      if(opened>=0 && !ui.phoneLocked && ui.loaded && !updateSteps(0))return 1;
       if(!backupsLoad(ui.backupIndex,scratch)){backupNotice("This recovery copy could not be read.");return 1;}
       int lock=leaseInspect(backupTarget,0);char error[192],key[37];
       if(lock<0){backupNotice("Phone lock is damaged. Preserve the files for recovery.");return 1;}
@@ -1018,19 +1034,22 @@ static void input(u32 down) {
   if(ui.screen==UI_REWARD_SETTINGS){
     if(down & KEY_B){ui.screen=UI_SETTINGS;return;}
     if(down & (KEY_A|KEY_X)){
-      int old=ui.expandedItems;ui.expandedItems=(down&KEY_A)!=0;
-      if(!configSave()){ui.expandedItems=old;notify("Settings save failed.");}
-      else notify(ui.expandedItems?"Expanded Dowsing enabled.":"Original rewards enabled.");
+      ui.expandedItems=(down&KEY_A)!=0;
+      configDirty=1;
+      notify(ui.expandedItems?"Expanded Dowsing enabled.":"Original rewards enabled.");
     }
     return;
   }
   if(ui.screen==UI_LIST && (down & KEY_SELECT)){openGlobalBackups();return;}
   if (down & KEY_Y) {
     if (ui.saveError) {
-      if (save()) {
+      if (commitProgress()) {
+        if (exitRequested) { quit = 1; return; }
         ui.discardPrompt = 0;
-        ui.screen = UI_HOME;
-        refresh();
+        ui.saveError = 0;
+        ui.screen = opened >= 0 ? UI_HOME : UI_LIST;
+        if (opened >= 0)
+          refresh();
         notify("Saved. Your progress is safe.");
       }
       return;
@@ -1045,14 +1064,20 @@ static void input(u32 down) {
       if ((down & KEY_X) || ((down & KEY_A) && ui.saveChoice == 1)) {
         ui.discardPrompt = 1;
       } else if ((down & KEY_A) && ui.saveChoice == 0) {
-        if (save()) {
-          ui.screen = UI_HOME;
-          refresh();
+        if (commitProgress()) {
+          if (exitRequested) { quit = 1; return; }
+          ui.saveError = 0;
+          ui.screen = opened >= 0 ? UI_HOME : UI_LIST;
+          if (opened >= 0)
+            refresh();
           notify("Saved. Your progress is safe.");
         }
       }
     } else if (down & KEY_A) {
       ui.discardPrompt = 0;
+      if (exitRequested)
+        configDirty = 0;
+      exitRequested = 0;
       dirty = 0;
       ui.saveError = 0;
       if (!load(opened) || !walkerCanWalk(ee))
@@ -1060,7 +1085,7 @@ static void input(u32 down) {
       else {
         walkerResume(ee, now(), ui.secondsPerStep);
         dirty = 1;
-        lastAdvance = lastSync = now();
+        lastAdvance = now();
         ui.screen = UI_HOME;
       }
     } else if (down & KEY_B) {
@@ -1072,6 +1097,7 @@ static void input(u32 down) {
       ui.screen != UI_FORCE && ui.screen != UI_RESULT)
     ui.screen = UI_LOCKED;
   if (ui.screen == UI_LOCKED) {
+    if (down & KEY_START) { requestExit(); return; }
     if(down & KEY_R){openBackups();return;}
     if (down & KEY_A)
       startPhoneSync();
@@ -1102,18 +1128,21 @@ static void input(u32 down) {
       ui.screen = UI_FORCE;
     if (down & KEY_B)
       ui.screen = ui.phoneLocked ? UI_LOCKED : UI_HOME;
-    if (down & KEY_START) {
-      syncStop();
-      if (!ui.phoneLocked && !syncSteps(0))
-        return;
-      quit = 1;
-    }
+    if (down & KEY_START)
+      requestExit();
     return;
   }
   if (down & KEY_START) {
-    if (opened >= 0 && !syncSteps(0))
-      return;
-    quit = 1;
+    requestExit();
+    return;
+  }
+  if (ui.screen == UI_DISCARD_WALKER) {
+    if (down & KEY_A)
+      closeWalker();
+    else if (down & KEY_B) {
+      ui.screen = UI_HOME;
+      message("");
+    }
     return;
   }
   if (ui.screen == UI_SCAN)
@@ -1154,7 +1183,7 @@ static void input(u32 down) {
     if ((down & (KEY_A | KEY_B)) && osGetTime() >= deadline) {
       ui.screen = resultReturn;
       if (opened >= 0)
-        syncSteps(0);
+        updateSteps(0);
       else if (ui.count)
         load(ui.cursor);
       message("");
@@ -1284,11 +1313,10 @@ static void input(u32 down) {
       pendingKind = -1;
       if (ok > 0) {
         dirty=1;
-        if (!backupsPreserveReward(paths[opened],ee)) { saveFailure("Preserving caught reward", EIO); refresh(); return; }
         char title[96];
         snprintf(title,sizeof(title),kind?"You found %s!":"You caught %s!",
                  kind?itemName(walkerRouteItemId(ee,reward)):speciesName(walkerRoutePokemonId(ee,reward)));
-        endGame(title,"The new reward replaced your selected slot.");
+        endGame(title,"The reward replaced your selected slot. Press START to save.");
       }
     }
   }
@@ -1366,10 +1394,6 @@ int main(void) {
         sampleSensor();
         lastAdvance = stamp;
       }
-      if ((ui.screen == UI_HOME || ui.screen == UI_CARD ||
-           ui.screen == UI_PACK) &&
-          !ui.saveError && now() - lastSync >= 60)
-        syncSteps(0);
       refresh();
     }
     uiUpdateClock(&ui, osGetTime());
@@ -1383,8 +1407,6 @@ int main(void) {
   syncStop();
   if (directory)
     closedir(directory);
-  if (!quit && opened >= 0 && !ui.phoneLocked)
-    syncSteps(0);
 #ifndef __NDS__
   if (ui.sensorAvailable)
     ptmuExit();

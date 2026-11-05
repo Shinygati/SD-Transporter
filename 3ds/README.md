@@ -87,15 +87,6 @@ Outputs: `pokewalker3ds.3dsx`, `pokewalker3ds.smdh`, and a debugging ELF. Use `m
 
 For the CIA build, install the open-source [Project_CTR makerom](https://github.com/3DSGuy/Project_CTR) and put it on PATH, then run `make cia`. Alternatively set `MAKEROM=/path/to/makerom`. `app.rsf` specifies the app identity and direct SD read/write permissions. The generated original-art `banner.bin` is included. To regenerate it, install [bannertool](https://github.com/Steveice10/bannertool) and run `make banner`. No external firmware, retail banner or Nintendo SDK is needed.
 
-Portable C11 EEPROM checks require no 3DS SDK:
-
-```sh
-cc -std=c11 -O2 -Wall -Wextra -Isource tests/test_walkerfile.c source/walkerfile.c -o walker-check
-./walker-check
-```
-
-MSVC supports the checks with `/std:c11`. Optional `tools/ui_preview.c` emits SVG when built with `UI_PREVIEW`; create a `work/` folder in its current directory first. The preview uses demonstration counters and no retail artwork.
-
 ## Credits and license
 
 Part of **SD Transporter**. Thanks to [TWiLight Menu++](https://github.com/DS-Homebrew/TWiLightMenu) and [nds-bootstrap](https://github.com/DS-Homebrew/nds-bootstrap) for the projects underlying SD Transporter, and devkitPro, libctru, Citro2D and Citro3D for the 3DS development libraries.

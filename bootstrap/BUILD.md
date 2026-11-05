@@ -30,7 +30,7 @@ On Windows use native/forward-slash paths accepted by the installed make/compile
 
 Run `python build_walker.py` with `LEGACY_DEVKITARM` set to the compiler directory before rebuilding after changes to `retail/pokewalker/`. The generator regenerates both the protocol/stub header and the position-independent DS dispatcher, then packs `retail/nitrofiles/walker_ds.bin` plus its offset/size metadata header. This asset is a required generated build input, not a game dump. Keeping it outside the ARM7 loader preserves stack space. The compiled NDS embeds it; no separate copy of `walker_ds.bin` goes on the SD card.
 
-Copy this directory's `nightly-bootstrap.ver` alongside the compiled loader at `/_nds/nightly-bootstrap.ver` so TWiLight settings can display the custom version. See `tests/README.md` for the loader-header and synthetic ARM runtime checks. DS Lite support remains experimental pending hardware validation.
+Copy this directory's `nightly-bootstrap.ver` alongside the compiled loader at `/_nds/nightly-bootstrap.ver` to display **SD Transporter** as the Nightly label. Run `python bootstrap/brand_twilight_settings.py path/to/original/settings.srldr path/to/patched/settings.srldr` from the project root to prepare the matching TWiLight v27.25.1 settings loader, then copy it to `/_nds/TWiLightMenu/settings.srldr`. The script accepts the two upstream settings builds used in the console-SD and flashcart packages. DS Lite support remains experimental pending hardware validation.
 
 
 ## Original GBA and Gen 5 payload generators

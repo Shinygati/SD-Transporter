@@ -13,6 +13,7 @@ enum {
     UI_CARD,
     UI_SETTINGS,
     UI_RESULT,
+    UI_DISCARD_WALKER,
     UI_SYNC,
     UI_LOCKED,
     UI_FORCE,

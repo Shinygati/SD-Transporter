@@ -102,3 +102,7 @@ The source image is unchanged; the displayed LCD is drawn over its sample screen
 runtime. The original image creator/license has not been independently
 identified. This asset is not asserted to be GPL-licensed project artwork;
 existing image and hardware-design rights remain with their respective owners.
+
+## Retail HGSS cartridge launcher
+
+The launcher builds on DS-Homebrew’s TWiLight Menu++ Slot-1 launcher and includes NitroHax work by Michael “Chishm” Chisholm and loader contributions credited to Darkain and yellow wood goblin. The resident SD driver derives from Normmatt’s driver. See the [cartridge launcher notes](TWiLightMenu-27.25.1/slot1launch/README-CARTRIDGE.md) and the original source notices for details.

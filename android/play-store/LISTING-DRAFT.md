@@ -2,7 +2,6 @@
 
 Developer: Shinygati
 
-Support email: anthoney1313@gmail.com
 
 Provisional app name: Walker Companion
 

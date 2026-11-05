@@ -1,5 +1,7 @@
 # SD Transporter
 
+Current version **1.6.0**.
+
 For app setup, activities, Wi-Fi handoffs and recovery, read [howtouse.txt](howtouse.txt).
 
 For TWiLight setup and help with missing Pokémon, saving, or phone sync, see the [Pokéwalker troubleshooting guide](https://github.com/Shinygati/SD-Transporter/wiki/Troubleshooting-%E2%80%90-Pokewalker).
@@ -130,6 +132,15 @@ Start with an existing working TWiLight Menu++ installation. Compile the require
 
 The 3DS CIA title ID is `000400000F7E1200`.
 
+### Console SD and DSpico packages
+
+- **3DS or DSi cfw only** contains the console SD files. On a modded DSi, start TWiLight Menu++ from the console SD using `BOOT.NDS` in Unlaunch.
+- **DSi Flashcart / 3DS or DSi SD** goes on the console SD. **DSi Flashcart / Pico SD** goes on the DSpico microSD. Launch `BOOT_ALT.NDS` in DSi mode and select the console SD in TWiLight.
+
+### Physical HeartGold and SoulSilver
+
+The [standalone cartridge launcher](TWiLightMenu-27.25.1/slot1launch/README-CARTRIDGE.md) runs in DSi mode on DSi and 3DS and stores the virtual walker on the console SD. Insert the retail cartridge before boot or use the launcher’s insert prompt if you started through DSpico with console SD access. The physical cartridge send-and-return cycle still needs hardware testing.
+
 ### Migration and Poké Transfer
 
 1. Hover over the source GBA or supported DS ROM and press **Y**.
@@ -146,7 +157,7 @@ Settings are stored under `sd:/_nds/nds-bootstrap/`: `slot2.ini`, `poketransfer.
 3. For phone use, connect both devices to the same local network and open **Settings → Phone sync** on the console.
 4. Open **Console Wi-Fi sync** on the phone, enter or select the console IP, and choose **Receive Pokémon from console**. Keep the console sync screen open.
 5. To return, reopen console Phone sync and choose **Return Pokémon** on the phone.
-6. Close the console companion before opening HGSS to exchange the returned data.
+6. Press **START → Save and exit** before reopening HGSS. Walking progress and rewards stay in memory until you save or complete a phone handoff.
 
 Local sync uses TCP port **30820** over unencrypted HTTP. Trainer/game information and step totals travel directly to the entered console IP; session tokens and CRC32 do not encrypt the connection. The phone discloses this before first use. No developer-operated server receives sync data. Guest-network client isolation can prevent devices from reaching each other. On DS Lite, use **Settings > Wi-Fi setup**, or press **Y** on the walker list to configure Wi-Fi before opening a walker. Select an open/WEP network; WEP uses a 10-, 26- or 32-digit hexadecimal key. Select a blank-name result to enter its hidden SSID, or press **Y** inside Wi-Fi setup to enter a name and run a directed search. The SSID keyboard preserves case, spaces and symbols, accepts 1–32 printable ASCII bytes, and uses **R** to switch keyboard pages, **X** to delete, **START** to submit and **B** to cancel. The **SP** key inserts a space. D-pad/A and touch entry are supported; X deletes a key digit and START connects. A successfully connected network is saved to `/data/pokewalker/wifi.bin` on the flashcart card and reused for phone sync. This profile contains the network key; keep it private. WPA/WPA2/WPA3 are not supported by this DS Lite setup. Other console models keep their existing Nintendo WFC settings path. The DS Lite setup does not write the console firmware.
 

@@ -572,14 +572,14 @@ void uiBottom(const UIState *s) {
                           : s->screen == UI_PACK     ? "Pokémon & items"
                           : s->screen == UI_REPLACE  ? "Pack full — choose a slot"
                           : s->screen == UI_CARD     ? "Trainer card"
-                          : s->screen == UI_SETTINGS ? "Settings 1.5"
+                          : s->screen == UI_SETTINGS ? "Settings 1.6.0"
                                                      : "Adventure journal";
     label(17, 12, .52f, INK, heading, 290);
     if (s->screen == UI_HOME) {
         const char *a[] = {"Poké Radar",   "Dowsing",    "Your pack",
-                           "Trainer card", "Sync steps", "Settings"};
+                           "Trainer card", "Update steps", "Settings"};
         const char *b[] = {"10 watts",     "3 watts",       "Your rewards",
-                           "Stroll stats", "Save progress", "Step rate"};
+                           "Stroll stats", "Refresh progress", "Step rate"};
         if (s->pendingEncounter) {
             a[0] = "Wild Pokémon!";
             b[0] = "Free encounter";
@@ -660,13 +660,13 @@ void uiBottom(const UIState *s) {
 
         roundbox(12,198,296,20,5,PANEL);
         label(22,200,.5f,TEAL,"X Backups   SELECT Rewards",280);
-    } else if (s->screen == UI_RESULT) {
+    } else if (s->screen == UI_RESULT || s->screen == UI_DISCARD_WALKER) {
         roundbox(15, 43, 290, 168, 10, PANEL);
         paragraph(26, 49, .6f, INK, s->message, 268, 2, 21);
         paragraph(26, 96, .55f, INK, s->detail, 268, 6, 18);
-        label(20, 220, .55f, TEAL, "A Continue   B Back", 280);
+        label(20, 220, .55f, TEAL, s->screen == UI_DISCARD_WALKER ? "A Discard   B Keep" : "A Continue   B Back", 280);
     }
-    if (s->screen != UI_RESULT)
+    if (s->screen != UI_RESULT && s->screen != UI_DISCARD_WALKER)
         label(17, 222, .55f, INK,
               s->saveError ? "Y Retry save   ·   Keep app open"
               : s->screen == UI_HOME ? "START Save and exit   B Back"

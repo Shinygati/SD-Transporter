@@ -1,8 +1,8 @@
 # Google Play preparation
 
-Reviewed 3 November 2026. Developer: **Shinygati**. Public support and privacy contact: **anthoney1313@gmail.com**.
+Reviewed 3 November 2026. Developer: **Shinygati**.
 
-These are preparation documents, not evidence of Google approval. Nothing has been submitted or published. The packaged 1.5 APK is for direct installation; Play publication requires the preparation below.
+These are preparation documents, not evidence of Google approval. Nothing has been submitted or published. The APK is for direct installation; Play publication requires the preparation below.
 
 ## Work included
 

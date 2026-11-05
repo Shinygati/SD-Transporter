@@ -1,11 +1,7 @@
 /* Direct SD file replacement. GPL-3.0-or-later. */
 #include "sdrename.h"
-#ifdef SDRENAME_TEST
-#include "sdrename_test_api.h"
-#else
 #include <3ds.h>
 #include <3ds/util/utf.h>
-#endif
 #include <errno.h>
 #include <string.h>
 

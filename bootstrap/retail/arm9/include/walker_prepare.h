@@ -26,6 +26,7 @@
 #include "nitrofs.h"
 #include "walker_ds_payload.h"
 #include "walker_history.h"
+#include "version.h"
 
 #define WALKER_INI_PATH(conf) ((conf)->gameOnFlashcard ? "fat:/_nds/nds-bootstrap/pokewalker.ini" : "sd:/_nds/nds-bootstrap/pokewalker.ini")
 #define WALKER_ERROR_PATH(conf) ((conf)->gameOnFlashcard ? "fat:/_nds/nds-bootstrap/pokewalker-error.txt" : "sd:/_nds/nds-bootstrap/pokewalker-error.txt")
@@ -49,7 +50,7 @@ static void walkerEnableDsDiagnostics(configuration *conf) {
     easysave::ini settings(WALKER_INI_PATH(conf));
     FILE *report = fopen("fat:/_nds/nds-bootstrap/pokewalker-status.txt", "w");
     if (report) {
-        fprintf(report, "BUILD=1.5.1\nGAME=%s\nSAVE=%s\nKEY=%s\nENABLED=%s\nGAME_ON_FLASHCARD=%d\nSAVE_ON_FLASHCARD=%d\nB4DS=%d\n",
+        fprintf(report, "BUILD=" VER_NUMBER "\nGAME=%s\nSAVE=%s\nKEY=%s\nENABLED=%s\nGAME_ON_FLASHCARD=%d\nSAVE_ON_FLASHCARD=%d\nB4DS=%d\n",
             conf->ndsPath, conf->savPath ? conf->savPath : "", key,
             settings.fetch(key, "VIRTUAL_WALKER", "0").c_str(),
             conf->gameOnFlashcard, conf->saveOnFlashcard, conf->b4dsMode);

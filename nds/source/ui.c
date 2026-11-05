@@ -420,7 +420,7 @@ void uiBottom(const UIState *s) {
     return;
   }
   const char *title = s->screen == UI_HOME       ? "Adventure menu"
-                      : s->screen == UI_SETTINGS ? "Settings 1.5"
+                      : s->screen == UI_SETTINGS ? "Settings 1.6.0"
                       : s->screen == UI_RADAR    ? "Poke Radar"
                       : s->screen == UI_DOWSE    ? "Dowsing"
                       : s->screen == UI_BATTLE   ? "Choose a move"
@@ -431,7 +431,7 @@ void uiBottom(const UIState *s) {
   header(title);
   if (s->screen == UI_HOME) {
     const char *a[] = {"Poke Radar",   "Dowsing",    "Your pack",
-                       "Trainer card", "Save steps", "Settings"};
+                       "Trainer card", "Update steps", "Settings"};
     const char *b[] = {"10 watts",     "3 watts",  "Rewards",
                        "Stroll stats", "Save now", "Walking"};
     if (s->pendingEncounter) {
@@ -532,10 +532,10 @@ void uiBottom(const UIState *s) {
         (unsigned long)s->info.totalSteps);
     fmt(8, 140, INK, 30, "Today: %lu", (unsigned long)s->info.todaySteps);
     text(8, 160, MUTED, s->info.route, 30);
-  } else if (s->screen == UI_RESULT) {
+  } else if (s->screen == UI_RESULT || s->screen == UI_DISCARD_WALKER) {
     wrap(8, 39, GOLD, s->message, 30, 3);
     wrap(8, 79, INK, s->detail, 30, 8);
-    footer("A Continue B Back");
+    footer(s->screen == UI_DISCARD_WALKER ? "A Discard  B Keep" : "A Continue B Back");
     return;
   }
   footer(s->screen == UI_HOME ? "START Save and exit  B Back"
