@@ -2,6 +2,8 @@
 
 For app setup, activities, Wi-Fi handoffs and recovery, read [howtouse.txt](howtouse.txt).
 
+For TWiLight setup and help with missing Pokémon, saving, or phone sync, see the [Pokéwalker troubleshooting guide](https://github.com/Shinygati/SD-Transporter/wiki/Troubleshooting-%E2%80%90-Pokewalker).
+
 SD Transporter adds virtual cartridge support to TWiLight Menu++ and nds-bootstrap, allowing compatible Pokémon games to migrate or transfer Pokémon using ROMs and saves stored on the console SD card. It also provides a virtual Pokéwalker for HeartGold and SoulSilver, with companion applications for 3DS, DS/DSi and Android, plus an iPhone source port.
 
 This is an independent homebrew project built on upstream open-source software. Game ROMs, saves, console firmware and retail Download Play applications are not distributed with the project.
