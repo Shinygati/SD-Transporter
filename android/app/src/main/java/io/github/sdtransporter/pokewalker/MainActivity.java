@@ -129,6 +129,16 @@ public final class MainActivity extends Activity {
         classicOnly=only;generation++;page="classic";renderClassicControls();
         handler.removeCallbacks(classicClock);handler.post(classicClock);
     }
+    // Launch a paid activity through the same LCD game engine used by Classic mode.
+    // HOME -> MENU (Radar selected) -> optional Dowsing -> confirm.
+    // Do not pre-spend watts: walkerClassicInput performs the charge exactly once.
+    private void openClassicActivity(int activity){
+        openClassic(true);
+        if(!page.equals("classic"))return;
+        classicPress(2); // HOME -> MENU, selection 0 (Radar)
+        if(activity==1)classicPress(2); // MENU -> selection 1 (Dowsing)
+        classicPress(1); // Open the selected activity
+    }
     private void renderClassicControls(){
         panel.removeAllViews();appTitle.setVisibility(classicOnly?View.GONE:View.VISIBLE);stats.setVisibility(classicOnly?View.GONE:View.VISIBLE);
         picture.getLayoutParams().height=dp(360);picture.requestLayout();
@@ -192,8 +202,8 @@ public final class MainActivity extends Activity {
             if(state.revoked)note("This session was revoked. To recover this phone copy into a missing console target, use Receive phone copy on the console and Return Pokémon here.");
             if(state.active()&&!state.returnPending){
                 long[] info=Native.info(state.data);
-                button(info[Native.VISITOR]>0?"Wild visitor · free battle":"Poké Radar · 10 watts",this::radarStart);
-                button("Dowsing · 3 watts",this::dowseStart);
+                button(info[Native.VISITOR]>0?"Wild visitor · free battle":"Poké Radar · 10 watts",()->openClassicActivity(0));
+                button("Dowsing · 3 watts",()->openClassicActivity(1));
                 if(state.battleRewardChoice>=0)button("Claim battle reward",this::claimBattleReward);
                 button("Your pack",this::pack);button("Trainer card",this::card);button("Connect",this::connectMenu);
             }
