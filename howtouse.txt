@@ -1,5 +1,5 @@
 SD TRANSPORTER - POKEWALKER COMPANION USER GUIDE
-Version 1.5 - Updated: 4 November 2026
+Version 1.6.1 - Updated: 6 November 2026
 
 This guide covers the 3DS, NDS and Android companions and the iPhone source
 port. The phone apps use the same walker progress and activities. The iPhone
@@ -7,31 +7,54 @@ port currently requires a separate Apple SDK build; no iPhone binary is included
 
 1. INSTALL OR UPDATE
 
-Use a homebrew-enabled console and the matching SD Transporter files.
-Copy the update ZIP's SD folder CONTENTS to the root of your SD/microSD card.
-Keep your existing game saves and walker files.
+The release ZIP has one folder per setup: DS or DS Lite - flashcart,
+DSi - flashcart, 3DS - flashcart, DSi - custom firmware and 3DS - custom
+firmware. Open START HERE.txt, pick the one folder that matches your console
+and follow its README.txt. Each folder already includes TWiLight Menu++ 27.25.1
+with the SD Transporter changes applied, so nothing else needs downloading.
+
+Copy the CONTENTS of each "Copy to ..." folder to the root of the card it
+names, merging folders. Keep your existing game saves and walker files; they
+are not overwritten. Back up the card first.
 
 3DS:
-- Install SD/cias/3DS-Pokewalker.cia with your usual CIA installer, OR
-  use SD/3ds/pokewalker3ds/pokewalker3ds.3dsx from Homebrew Launcher.
-NDS / DS Lite / DSi:
-- Launch SD/roms/nds/Pokewalker-NDS.nds using TWiLight Menu++ or a suitable
-  flashcart with working storage access.
+- Run 3ds/pokewalker3ds/pokewalker3ds.3dsx from the Homebrew Launcher.
+  A CIA for the companion is not included in 1.6.1.
+NDS / DS Lite / DSi (and 3DS in DS mode):
+- Launch roms/nds/Pokewalker-NDS.nds from TWiLight Menu++, with working
+  SD/DLDI access.
 Android:
-- Install Pokewalker-Android.apk over the existing app. Keeping the installed
+- Install the signed 1.6.1 APK over the existing app. Keeping the installed
   app's data preserves the active walker, saved consoles and handoff records.
+  Never uninstall the app while it holds your Pokemon.
 
 Update the console and phone companions together when updating sync features.
-The full source/build ZIP also contains the modified TWiLight Menu++ loaders,
-nds-bootstrap and the GBA/Gen V features. See README.md for those features.
+See README.md for the GBA migration, Poke Transfer and other features.
 
 2. CREATE AND OPEN A WALKER
 
-In TWiLight Menu++, highlight HeartGold or SoulSilver, press Y, and enable
-Virtual Pokewalker. Launch with the matching modified Nightly bootstrap.
+In TWiLight Menu++, highlight HeartGold or SoulSilver and press Y. Set
+Bootstrap: to Nightly, then highlight "Virtual Pokewalker: Off" and press A so
+it reads "Virtual Pokewalker: On". Launch the game as normal.
 Use HGSS's normal Pokewalker menu to register the walker and send a Pokemon
-on a stroll. The virtual connection is triggered with SELECT on the normal
-Pokewalker connection/search screen.
+on a stroll. The virtual connection is triggered by holding SELECT on the
+normal Pokewalker connection/search screen. SELECT is the walker's button.
+
+SELECT + LEFT RESETS THE WALKER. Pressing SELECT and LEFT together while HGSS
+is searching wipes the virtual walker back to a brand-new, unregistered one,
+the same as deleting the .walker file: trainer registration, partner, caught
+Pokemon, items, watts and step history are all cleared. It triggers once per
+press and only on the search screen, never during normal play. Use it only
+when you deliberately want a fresh walker (for example, one registered to a
+different save that HGSS refuses). If you press it by accident, stop, and
+restore the newest "prelaunch" snapshot from before the wipe using Recovery
+(section 8). A prelaunch snapshot is saved automatically before every launch.
+
+Real HGSS cartridges (DSi/3DS in DSi mode with console SD access):
+Launch roms/nds/Virtual-Pokewalker-Cartridge.nds, insert the cartridge when
+asked, press A to check it, then A to start. Its walker is saved on the
+console SD as roms/nds/saves/Cartridge-<game code>-<header CRC>.walker and
+opens in the companions like any other walker. Keep the SD card inserted.
 
 Close HGSS before opening its walker in a companion. The game creates a 64 KiB
 .walker file next to its save, for example:
@@ -84,8 +107,22 @@ If saving fails, keep the app open and retry saving. Do not treat an error as
 a completed save. Android offers Retry saving; consoles show a save-error
 screen. Phone recovery copies remain accessible in Settings.
 
-Normal course encounters are shiny-locked. Walking events may find rewards
-and registered empty walkers may gain a course companion. These companions
+Before every save, all companions check the walker. A damaged copy of a
+mirrored record is repaired from its good copy automatically. If both copies
+are bad, or a Pokemon in the walker is malformed (species, level, item, form
+or moves), the save is refused ("Walker data check") so HGSS never receives
+broken data. Nothing on the card is changed; keep the app open and use
+Recovery. Consoles apply the same check to a walker returned from a phone.
+
+Pokemon received in HGSS from the walker now get 0 PP in empty move slots.
+HGSS used to leave the PP of the default move that slot had before; the
+1.6.1 bootstrap corrects this while the walker is connected.
+
+Normal course encounters are shiny-locked. Walking events may find rewards.
+A registered empty walker earns steps and watts, but from 1.6.1 no Pokemon
+joins it: HGSS builds a joined partner as an event Pokemon from walker data
+the companions never had, so those partners came back illegal. A partner that
+joined under an older version is still on its walker. These companions
 implement supported original-style activities; they do not execute original
 Pokewalker firmware. Sections 14-17 describe original-style controls, optional
 rewards, visits, Bluetooth battles and supported special-course activation.
@@ -142,6 +179,10 @@ Save and close the companion before launching HGSS. Use the game's normal
 Pokewalker menu to return from the stroll or receive supported gifts/rewards.
 Keep each walker paired with the HGSS save that created its registration.
 Recovery does not merge separate Pokemon, trainers or newly reset strolls.
+
+At the end of a connection the walker writes its changes to the card before
+HGSS shows that the connection is complete, so a short pause there is normal.
+Let it finish and let HGSS save; don't reset or turn the console off.
 
 8. BACKUPS AND DELETION
 
@@ -218,7 +259,7 @@ The displayed date follows the recorded file time and the console's clock;
 changing the system clock can affect the dates of later snapshots.
 
 For source, compilation, limitations and project credits, see README.md,
-BUILDING-WINDOWS.md and CREDITS.md. Current builds are private educational tests.
+BUILDING-WINDOWS.md and CREDITS.md.
 
 12. MULTIPLE WALKERS ON ONE PHONE
 
@@ -325,8 +366,9 @@ before enabling supported special-course flags. Select a course from HGSS when
 sending a Pokemon. Language-exclusive unsupported entries are left disabled;
 ordinary watt-based course progression remains unchanged.
 
-1.5 save checks cover missing-file returns, final-file verification, interrupted
-profile writes, malformed Bluetooth packets and storage alignment. Physical
+Save checks cover missing-file returns, final-file verification, interrupted
+profile writes, malformed Bluetooth packets, storage alignment and, from 1.6.1,
+walker data validation before every save and on phone returns. Physical
 radio/console compatibility still depends on the device. Keep independent save
 backups and update the phone and console companions together.
 
