@@ -1,0 +1,76 @@
+SD Transporter v1.6.2
+=====================
+
+SD Transporter adds a virtual Pokewalker to Pokemon HeartGold and
+SoulSilver, plus virtual Pal Park and Poke Transfer cartridges, through a
+modified copy of TWiLight Menu++. Everything you need is in this folder,
+including TWiLight Menu++ itself, so you don't have to download it
+separately.
+
+
+STEP 1: Work out which setup you have
+-------------------------------------
+
+Open only the ONE folder that matches you. Ignore the rest.
+
+  "DS or DS Lite - flashcart"
+      An original DS or DS Lite, with a flashcart (an R4, Acekard, DSTT,
+      DSpico and so on) that you put a microSD card into.
+
+  "DSi - flashcart"
+      A DSi or DSi XL, using a flashcart. Pick this if you have NOT
+      installed Unlaunch or hiyaCFW on the DSi itself.
+
+  "3DS - flashcart"
+      A 3DS, 2DS, New 3DS or New 2DS, using a flashcart in the cartridge
+      slot.
+
+  "DSi - custom firmware"
+      A DSi or DSi XL that's been modded with Unlaunch (or hiyaCFW), so
+      TWiLight Menu++ runs straight off the SD card in the side of the
+      console.
+
+  "3DS - custom firmware"
+      A 3DS or 2DS with custom firmware (Luma3DS). If your 3DS shows
+      "Luma3DS" when you hold SELECT while turning it on, this is you.
+
+Not sure? If you play your games from a little card you stick into the
+cartridge slot, you have a flashcart. If you've followed a guide like
+dsi.cfw.guide or 3ds.hacks.guide, you have custom firmware.
+
+There's also an "Android" folder for the phone app.
+
+
+STEP 2: Back up first
+---------------------
+
+Before copying anything, make a copy of your whole SD card (or flashcart
+microSD) on your computer. If you already use the Pokewalker, also keep a
+copy of your .sav and .walker files. That way nothing can be lost.
+
+
+STEP 3: Follow the README in your folder
+----------------------------------------
+
+Every setup folder has its own README.txt with step-by-step
+instructions. The folders inside named "Copy to ..." tell you which card
+their contents go on.
+
+"Copy the contents" means: open the "Copy to ..." folder, select
+everything inside it, and drag it onto the card. When your computer asks
+whether to merge folders or replace files, say yes to all. Do NOT copy
+the "Copy to ..." folder itself onto the card.
+
+
+What's in here
+--------------
+
+  TWiLight Menu++ 27.25.1, with the SD Transporter changes already applied
+  SD Transporter bootstrap (runs the games, and the virtual Pokewalker)
+  Pokewalker companion for DS/DSi/3DS (walk, catch, find items)
+  Real-cartridge Pokewalker launcher (DSi/3DS only, for retail HGSS carts)
+  Pokewalker companion for 3DS (counts real steps)
+  Android Pokewalker app
+
+SHA256SUMS.txt lists a checksum for every file, if you want to check
+nothing got damaged while downloading.

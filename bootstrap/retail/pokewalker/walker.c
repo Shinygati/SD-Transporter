@@ -466,21 +466,22 @@ static void request(WalkerControl *c, u32 len) {
 		for (u32 i = 0; i < 4; i++) c->session[i] = c->ownSession[i] ^ p[4 + i];
 		c->state = 1;
 		c->armed = 0;
+		c->selectLatch = 1; /* holding SELECT through the transfer must not re-arm */
 		answer(c, CMD_SLAVE_ACK, EXTRA_TO_WALKER, 0, 1);
 		return;
 	}
 	if (c->state != 1) {
-		/* CONNECT_COMPLETE already dropped the link to idle, and its 0x68 is
-		 * withheld until the EEPROM is verified on SD. If HGSS times out and
-		 * resends 0x66 meanwhile, the write path has just cleared the pending
-		 * answer; dropping the retry too means HGSS never sees completion
-		 * after a return already removed the Pokemon from the walker. Re-queue
-		 * the acknowledgement for the same session instead. */
+		/* CONNECT_COMPLETE already dropped the link to idle. If HGSS missed
+		 * the 0x68 and resends 0x66, the write path has just cleared the
+		 * pending answer; dropping the retry too means HGSS never sees
+		 * completion after a return already removed the Pokemon from the
+		 * walker. Re-queue the acknowledgement for the same session. */
 		if (cmd != CMD_CONNECT_COMPLETE) return; /* not linked: ignore stray packets */
 		for (u32 i = 0; i < 4; i++) {
 			if (p[4 + i] != c->session[i]) { c->badPackets++; return; }
 		}
 		answer(c, CMD_CONNECT_COMPLETE_ACK, EXTRA_FROM_WALKER, 0, 0);
+		c->cooldown = WALKER_COOLDOWN_READS;
 		return;
 	}
 	for (u32 i = 0; i < 4; i++) {
@@ -542,6 +543,7 @@ static void request(WalkerControl *c, u32 len) {
 		/* Last exchange of a session: answer, then go idle like the walker. */
 		answer(c, CMD_CONNECT_COMPLETE_ACK, EXTRA_FROM_WALKER, 0, 0);
 		c->state = 0;
+		c->cooldown = WALKER_COOLDOWN_READS;
 		return;
 	case CMD_RESET_EVENTS: case CMD_RESET_KEEP_ALL: case CMD_RESET_EVERYTHING:
 		/* Answer with the walker's pairing identity, then reset. */
@@ -559,11 +561,13 @@ static void request(WalkerControl *c, u32 len) {
 		return;
 	case CMD_DISCONNECT:
 		c->state = 0;
+		c->cooldown = WALKER_COOLDOWN_READS;
 		return;
 	case 0x36: case 0x44: case 0x56: case 0x64:
 		/* "Can't complete": the game is ending the link with a message of
 		 * its own (for example "already registered"). Nothing to answer. */
 		c->state = 0;
+		c->cooldown = WALKER_COOLDOWN_READS;
 		return;
 	default:
 		/* Unknown here: stay silent (the game times out) and record it. */
@@ -582,10 +586,13 @@ u32 walkerEntry(WalkerControl *c, u32 op, u32 a, u32 b) {
 		u8 *out = (u8 *)a;
 		c->reads++;
 		if (c->respLen) {
-            /* Do not tell HGSS a session completed while the final EEPROM
-             * image still exists only in RAM. The ARM7 writer (or DS-mode
-             * dispatcher) advances flushedSeq only after verified storage. */
-            if (c->resp[0] == CMD_CONNECT_COMPLETE_ACK && c->writeSeq != c->flushedSeq) return 0;
+            /* Answer CONNECT_COMPLETE straight away. Holding 0x68 back until
+             * the verified write-back finished let a slow card outlast HGSS's
+             * reply timeout: the game abandoned a return the walker had
+             * already applied, so the Pokemon was in neither place and the
+             * save still reported it out on the walker. The session is over
+             * once 0x68 is queued (state 0), and the writers drain the whole
+             * image immediately at that point. */
 			c->idleReads = 0;
 			const u32 n = c->respLen;
 			copyBytes(out, c->resp, n);
@@ -598,10 +605,31 @@ u32 walkerEntry(WalkerControl *c, u32 op, u32 a, u32 b) {
 		}
 		if (c->state == 0) {
 			const u32 keys = ~*(volatile u16 *)WALKER_KEY_REG;
+			const int select = (keys & WALKER_KEY_SELECT) != 0;
+			/* Like a real walker's button, a new link needs a new press:
+			 * SELECT still held from the last transfer does nothing until
+			 * it is let go. */
+			if (!select) c->selectLatch = 0;
+			if (c->cooldown) { /* let HGSS finish closing the last session */
+				c->cooldown--;
+				c->armed = 0;
+				return 0;
+			}
+			/* SELECT + LEFT must be held for WALKER_WIPE_FRAMES frames (about
+			 * two seconds) to wipe, so brushing LEFT while pressing SELECT
+			 * cannot reset the walker. Time comes from the game's own VBlank
+			 * counter, so it does not depend on how often HGSS polls. */
 			const int wipe = (keys & (WALKER_KEY_SELECT | WALKER_KEY_LEFT)) == (WALKER_KEY_SELECT | WALKER_KEY_LEFT);
-			if (wipe && !c->wipeHeld) wipeWalker(c); /* once per press */
-			c->wipeHeld = wipe;
-			if (keys & WALKER_KEY_SELECT) c->armed = 1;
+			const u32 now = *(volatile u32 *)WALKER_VBLANK_COUNT;
+			if (!wipe || c->selectLatch) {
+				c->wipeHeld = 0;
+			} else if (!c->wipeHeld) {
+				c->wipeHeld = 1; c->wipeStart = now;
+			} else if (c->wipeHeld == 1 && now - c->wipeStart >= WALKER_WIPE_FRAMES) {
+				c->wipeHeld = 2; /* once per hold */
+				wipeWalker(c);
+			}
+			if (select && !c->selectLatch) c->armed = 1;
 			if (c->armed) { /* advertise until the game takes over */
 				out[0] = CMD_ADVERTISING;
 				return 1;

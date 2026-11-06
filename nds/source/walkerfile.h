@@ -65,7 +65,7 @@ unsigned walkerPokemonId(const uint8_t *, unsigned);
 unsigned walkerRoutePokemonId(const uint8_t *, unsigned);
 unsigned walkerRouteItemId(const uint8_t *, unsigned);
 uint32_t walkerCrc(const uint8_t *, unsigned);
-/* Mirrored identity/health/unique-ID records valid and identical, and every
+/* Mirrored identity and health records valid and identical, and every
  * Pokemon summary (partner and caught slots) well formed for HGSS. */
 int walkerValidate(const uint8_t *);
 /* Rewrite a damaged mirrored record from its good copy; 0 if both are bad. */

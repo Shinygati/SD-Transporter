@@ -238,7 +238,6 @@ static inline void debugConf(configuration* conf) {
 }
 
 static int runNdsFile(configuration* conf) {
-	walkerEnableDsDiagnostics(conf);
 	// Debug
 	debug = conf->debug && !(conf->gen5RomPath && conf->gen5RomPath[0]);
 	if (debug) {

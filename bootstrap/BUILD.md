@@ -58,6 +58,16 @@ The adapter has 28 verified English/French/German/Italian/Spanish/Japanese/Korea
 
 The loader creates immutable verified pre-launch `.walker` snapshots under adjacent `transfers/backups/`. Existing phone locks still prevent HGSS from opening a checked-out walker. The NTR ARM7 walker writer verifies sector writes through checked I/O and retains failed sectors for retry. These are recovery safeguards, not a complete power-loss transaction across the DS save and EEPROM.
 
+## v1.6.2 walker changes (6 November 2026)
+
+- `arm9/include/walker_reconcile.h`: new `REREGISTERED` action. Save has nothing out, walker is not set up or not registered, and its route block (0x8F00, 0x52 bytes) is not still all 0xFF: restore the newest `.lastgood`/prelaunch copy registered to the save's TID/SID, ending any non-joined stroll on it. Wiped and newly created walkers keep an erased route block and are skipped.
+- `pokewalker/walker.c`: the SELECT + LEFT wipe fires after `WALKER_WIPE_FRAMES` (120, about 2 s) of continuous hold, still blocked by `selectLatch` and the post-session cooldown. `WalkerControl` gains `wipeStart` at the end; the hold is timed with the NitroSDK VBlank counter at 0x027FFC3C, which HGSS updates every frame.
+- Regenerate `walker_payload.h`, `walker_ds_payload.h` and `nitrofiles/walker_ds.bin` with GCC 14.2 (r65).
+
+## v1.6.1 walker write-back change (6 November 2026)
+
+The v1.5.1 completion gating below is removed. HGSS gets `0x68` immediately; the DSi/3DS ARM7 writer (and the real-cartridge runtime) drains every dirty sector as soon as the IR session is idle, and a resent `0x66` for the same session is answered again. Holding `0x68` until the verified flush finished could exceed HGSS's reply timeout on slower cards, leaving a returned Pokémon applied on the walker but not committed by the game. The DS Lite path keeps its synchronous verified save at session end.
+
 ## v1.5.1 console write-back rebuild (4 November 2026)
 
 The compiled v1.5.1 bootstrap bounds DSi/3DS background walker saves to one dirty 4 KiB sector per frame, keeps complete forced flushes, and withholds the final session-completion acknowledgement until the verified flush sequence catches up. A completion waiting on storage starts draining immediately. The DS Lite path retains its synchronous verified completion save.

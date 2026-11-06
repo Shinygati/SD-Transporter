@@ -43,15 +43,22 @@
  * game has dropped the link (cancelled, finished, or timed out without a
  * disconnect): go back to advertising so it can connect again. */
 #define WALKER_IDLE_READS   120u
+/* After a session ends, stay silent for this many reads even with SELECT
+ * pressed. HGSS is still closing the link and saving; an advertisement in
+ * that window makes it treat the transfer as failed. */
+#define WALKER_COOLDOWN_READS 120u
 
 /* Like the button on a real walker: the virtual walker only answers the
  * game's connection search after SELECT is pressed, so the game's own
  * "cancel" and the soft-reset combo keep working while it searches.
- * Holding SELECT + LEFT during the search wipes the walker to a new,
- * unregistered one (the same as deleting the .walker file). */
+ * Holding SELECT + LEFT together for about two seconds during the search
+ * wipes the walker to a new, unregistered one (the same as deleting the
+ * .walker file); a quick or accidental press does nothing. */
 #define WALKER_KEY_REG      0x04000130u /* REG_KEYINPUT, 0 = pressed */
 #define WALKER_KEY_SELECT   0x0004u
 #define WALKER_KEY_LEFT     0x0020u
+#define WALKER_VBLANK_COUNT 0x027FFC3Cu /* NitroSDK OS_GetVBlankCount(): +1 per frame */
+#define WALKER_WIPE_FRAMES  120u        /* ~2 s of SELECT + LEFT to wipe */
 
 /* Offsets used by tests; checked by static asserts. */
 #define WALKER_CTL_DIRTY    0x20
@@ -84,7 +91,10 @@ typedef struct WalkerControl {
 	unsigned char scratch[0x300]; /* decompression and copies */
 	unsigned int armed;        /* SELECT was pressed: advertise until linked */
 	unsigned int resets;       /* walker wiped with SELECT + LEFT */
-	unsigned int wipeHeld;     /* SELECT + LEFT still held since the last wipe */
+	unsigned int wipeHeld;     /* 1 while SELECT + LEFT are held, 2 once that hold has wiped */
+	unsigned int selectLatch;  /* SELECT held since a link started: no re-arm until released */
+	unsigned int cooldown;     /* idle reads left before advertising again after a session */
+	unsigned int wipeStart;    /* game VBlank count when the SELECT + LEFT hold began */
 } WalkerControl;
 
 #define WALKER_ASSERT(name, cond) typedef char walker_assert_##name[(cond) ? 1 : -1]

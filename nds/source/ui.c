@@ -420,7 +420,7 @@ void uiBottom(const UIState *s) {
     return;
   }
   const char *title = s->screen == UI_HOME       ? "Adventure menu"
-                      : s->screen == UI_SETTINGS ? "Settings 1.6.1"
+                      : s->screen == UI_SETTINGS ? "Settings 1.6.2"
                       : s->screen == UI_RADAR    ? "Poke Radar"
                       : s->screen == UI_DOWSE    ? "Dowsing"
                       : s->screen == UI_BATTLE   ? "Choose a move"

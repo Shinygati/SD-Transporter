@@ -7,14 +7,15 @@ extern unsigned cartwalker_control;
 static unsigned char verify[512] __attribute__((aligned(4)));
 static int busy;
 /* Raw writes are confined to the validated, preallocated 64 KiB file map.
- * Do not acknowledge completion after short/failed/silently dropped writes. */
+ * A failed or mismatched write stays dirty and is retried. */
 int cartWalkerPoll(int force){
  WalkerControl *c=(WalkerControl *)cartwalker_control;
  if(!c)return 1;
  if((unsigned)c!=CART_BASE+WALKER_CONTROL_OFF||c->magic!=WALKER_MAGIC||c->version!=WALKER_VERSION)return 0;
  if(c->writeSeq==c->flushedSeq)return 1;
  if(busy)return 0;
- if(!force && (c->state || c->respLen<8 || c->resp[0]!=0x68))return 0;
+ /* Write once the IR session is over (state 0), or when forced. */
+ if(!force && c->state)return 0;
  busy=1;
  CartStorage *store=(CartStorage *)(CART_BASE+CART_STORAGE_OFF);
  if(store->mapCrc!=cartMapSignature(store))goto failed;
@@ -47,9 +48,8 @@ int cartWalkerPoll(int force){
    }
    store->crc[n]=cartCrc(data,512);
   }
-  /* Only reached with HGSS waiting on 0x68 (or a forced flush): drain every
-   * dirty sector now instead of one per VBlank, so the game cannot time out
-   * on a return whose Pokemon has already left the walker image. */
+  /* Only reached after a session (or when forced): drain every dirty
+   * sector now instead of one per VBlank. */
  }
  for(unsigned n=0;n<WALKER_SECTORS;n++)if(c->dirty[n]){busy=0;return 0;}
  c->flushedSeq=seq;c->flushes++;store->error=0;busy=0;return 1;

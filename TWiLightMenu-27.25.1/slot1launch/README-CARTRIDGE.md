@@ -64,10 +64,11 @@ checksum protects that map; the console SD's CID is captured over FIFO and
 checked by the resident service. Runtime writes touch only mapped file data
 sectors; they do not edit FAT tables, directory entries or the cartridge save.
 
-The ARM7 service waits for a pending protocol completion, then drains one dirty
-4 KiB sector per VBlank. It checks previous-sector fingerprints, writes and
-reads back every 512-byte chunk. The inherited final `0x68` response remains
-pending until `flushedSeq` catches up. Failed writes stay dirty; known reset
+The ARM7 service writes once an IR session is over, draining every dirty
+4 KiB sector. It checks previous-sector fingerprints, writes and reads back
+every 512-byte chunk. The final `0x68` response is answered immediately rather
+than held until the write finishes, so a slow card cannot make HGSS give up on
+a completed exchange. Failed writes stay dirty and are retried; known reset
 paths require a successful forced flush before altering reset memory. These
 checks reduce specific failure risks; physical tests remain necessary.
 

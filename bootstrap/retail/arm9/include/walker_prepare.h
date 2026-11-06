@@ -26,37 +26,12 @@
 #include "nitrofs.h"
 #include "walker_ds_payload.h"
 #include "walker_history.h"
-#include "version.h"
+#include "walker_reconcile.h"
 
 #define WALKER_INI_PATH(conf) ((conf)->gameOnFlashcard ? "fat:/_nds/nds-bootstrap/pokewalker.ini" : "sd:/_nds/nds-bootstrap/pokewalker.ini")
 #define WALKER_ERROR_PATH(conf) ((conf)->gameOnFlashcard ? "fat:/_nds/nds-bootstrap/pokewalker-error.txt" : "sd:/_nds/nds-bootstrap/pokewalker-error.txt")
+#define WALKER_REPAIR_PATH(conf) ((conf)->gameOnFlashcard ? "fat:/_nds/nds-bootstrap/pokewalker-repair.txt" : "sd:/_nds/nds-bootstrap/pokewalker-repair.txt")
 #define WALKER_FILE_SIZE  0x10000
-
-/* DS flashcart diagnostics: keep a small launcher report even when the
- * per-game path does not match, and enable the existing ARM7 boot log. */
-static void walkerEnableDsDiagnostics(configuration *conf) {
-    if (!conf->ndsPath || !conf->gameOnFlashcard || dsiFeatures()) return;
-    char code[4] = {0};
-    FILE *rom = fopen(conf->ndsPath, "rb");
-    if (!rom) return;
-    fseek(rom, 0x0C, SEEK_SET);
-    fread(code, 1, 3, rom);
-    fclose(rom);
-    if (strncmp(code, "IPK", 3) && strncmp(code, "IPG", 3)) return;
-    conf->logging = true;
-    conf->valueBits |= BIT(7);
-    char key[41];
-    palParkPathKey(conf->ndsPath, key);
-    easysave::ini settings(WALKER_INI_PATH(conf));
-    FILE *report = fopen("fat:/_nds/nds-bootstrap/pokewalker-status.txt", "w");
-    if (report) {
-        fprintf(report, "BUILD=" VER_NUMBER "\nGAME=%s\nSAVE=%s\nKEY=%s\nENABLED=%s\nGAME_ON_FLASHCARD=%d\nSAVE_ON_FLASHCARD=%d\nB4DS=%d\n",
-            conf->ndsPath, conf->savPath ? conf->savPath : "", key,
-            settings.fetch(key, "VIRTUAL_WALKER", "0").c_str(),
-            conf->gameOnFlashcard, conf->saveOnFlashcard, conf->b4dsMode);
-        fclose(report);
-    }
-}
 
 static void walkerSkip(configuration *conf, const char *reason, const char *path) {
 	conf->walkerCluster = 0;
@@ -138,6 +113,20 @@ static void walkerPrepare(configuration *conf) {
         walkerSkip(conf,"could not preserve the pre-launch recovery snapshot",path.c_str());
         return;
     }
+    /* With the untouched state preserved above, bring the walker back in line
+     * with what the save says is out on a stroll (see walker_reconcile.h). */
+    {
+        std::string note;
+        if (walkerReconcile::run(path, conf->savPath, &note) >= walkerReconcile::ENDED_STROLL) {
+            FILE *log = fopen(WALKER_REPAIR_PATH(conf), "w");
+            if (log) {
+                fprintf(log, "The virtual Pokewalker was repaired before launch.\n%s\nWALKER_PATH=%s\nSAVE=%s\n"
+                        "The walker as it was before the repair is in transfers/backups (prelaunch snapshot).\n",
+                        note.c_str(), path.c_str(), conf->savPath);
+                fclose(log);
+            }
+        }
+    }
     if (conf->gameOnFlashcard) {
         struct nitroFSStruct payload;
         if (nitroFSOpen(NULL, &payload, "nitro:/walker_ds.bin", 0, 0) < 0 || payload.start < 0 ||
@@ -149,16 +138,6 @@ static void walkerPrepare(configuration *conf) {
         conf->walkerPayloadSize = payload.end - payload.start;
     }
 	conf->walkerCluster = st.st_ino;
-    if (conf->gameOnFlashcard && !dsiFeatures()) {
-        FILE *report = fopen("fat:/_nds/nds-bootstrap/pokewalker-status.txt", "a");
-        if (report) {
-            fprintf(report, "WALKER=%s\nCLUSTER=%lu\nBOOTSTRAP_CLUSTER=%lu\nPAYLOAD_OFFSET=%lu\nPAYLOAD_SIZE=%lu\n",
-                path.c_str(), (unsigned long)conf->walkerCluster,
-                (unsigned long)conf->ndsBootstrapCluster,
-                (unsigned long)conf->walkerPayloadOffset, (unsigned long)conf->walkerPayloadSize);
-            fclose(report);
-        }
-    }
 	remove(WALKER_ERROR_PATH(conf));
 }
 #endif

@@ -326,8 +326,9 @@ static int repairRecord(uint8_t *ee, unsigned a, unsigned b, unsigned n) {
 int walkerRepairRecords(uint8_t *ee) {
     WalkerInfo i;
     if (!walkerRead(ee, &i) || !i.setUp) return 0;
-    return repairRecord(ee, ID1, ID2, 104) && repairRecord(ee, HD1, HD2, 24) &&
-           repairRecord(ee, 0x83, 0x183, 0x28);
+    /* Identity and health only; the unique-ID block at 0x83 carries no
+     * checksum in real walker images. */
+    return repairRecord(ee, ID1, ID2, 104) && repairRecord(ee, HD1, HD2, 24);
 }
 int walkerValidate(const uint8_t *ee) {
     WalkerInfo i;

@@ -20,9 +20,10 @@ static aFile walkerFile;
 static bool walkerOpened = false;
 static u32 walkerSeenSeq = 0, walkerIdleFrames = 0;
 
-/* HGSS is waiting for the withheld CONNECT_COMPLETE_ACK (0x68). */
-static bool completionPending(const WalkerControl *c) {
-	return !c->state && c->respLen >= 8 && c->resp[0] == 0x68;
+/* The IR link is idle (a session finished, was cancelled or timed out), so
+ * nothing more will change until the next session: write everything now. */
+static bool sessionIdle(const WalkerControl *c) {
+	return !c->state;
 }
 
 static WalkerControl *control(void) {
@@ -35,9 +36,9 @@ bool walkerDue(bool force) {
 	WalkerControl *c = control();
 	if (!c || c->writeSeq == c->flushedSeq) return false;
 	if (force) return true;
-    /* A completion response is waiting on durable storage; start draining on
-     * this frame instead of waiting for the half-second coalescing delay. */
-    if (completionPending(c)) return true;
+    /* A session just ended: start draining on this frame instead of waiting
+     * for the half-second coalescing delay. */
+    if (sessionIdle(c)) return true;
 	if (c->writeSeq != walkerSeenSeq) {
 		walkerSeenSeq = c->writeSeq;
 		walkerIdleFrames = 0;
@@ -54,10 +55,10 @@ void walkerWrite(bool force) {
 		walkerOpened = true;
 	}
 	const u32 seq = c->writeSeq;
-	/* Pacing one sector per VBlank only helps mid-transfer. Once the game is
-	 * waiting on the final acknowledgement every frame of delay widens the
-	 * window in which HGSS can give up on a return, so drain it all now. */
-	const bool drain = force || completionPending(c);
+	/* Pacing one sector per VBlank only matters mid-transfer. Once the
+	 * session is over, write everything now to keep the time between HGSS
+	 * finishing and the walker being on the card as short as possible. */
+	const bool drain = force || sessionIdle(c);
 	for (u32 i = 0; i < WALKER_SECTORS; i++) {
 		if (!c->dirty[i]) continue;
 		/* Clear first: a sector changed again meanwhile is marked again and

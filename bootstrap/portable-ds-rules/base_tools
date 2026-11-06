@@ -1,0 +1,15 @@
+# Legacy tool definitions for makefiles that include $(DEVKITARM)/base_tools
+# directly (TWiLight's universal/bootstub). Uses the same compiler as ds_rules.
+export SHELL := /usr/bin/env bash
+PREFIX := $(LEGACY_DEVKITARM)/bin/arm-none-eabi-
+export CC := $(PREFIX)gcc
+export CXX := $(PREFIX)g++
+export AS := $(PREFIX)as
+export AR := $(PREFIX)gcc-ar
+export OBJCOPY := $(PREFIX)objcopy
+export STRIP := $(PREFIX)strip
+export NM := $(PREFIX)gcc-nm
+export RANLIB := $(PREFIX)gcc-ranlib
+SILENTCMD := @
+SILENTMSG := @echo
+ADD_COMPILE_COMMAND := @true

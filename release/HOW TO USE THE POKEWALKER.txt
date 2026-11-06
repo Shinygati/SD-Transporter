@@ -1,0 +1,148 @@
+How to use the virtual Pokewalker
+=================================
+
+This works the same on every setup once everything is installed.
+
+
+Turn it on for your game
+------------------------
+
+1. Put your HeartGold or SoulSilver ROM (.nds file) in the roms/nds
+   folder on your card, if it isn't there already.
+
+2. Turn on the console and open TWiLight Menu++.
+
+3. Highlight HeartGold or SoulSilver (don't open it yet) and press Y.
+   This opens that game's settings.
+
+4. Find "Bootstrap:" and change it to "Nightly". This tells TWiLight to
+   use the SD Transporter bootstrap instead of the normal one.
+
+5. Find "Virtual Pokewalker: Off" and press A so it says
+   "Virtual Pokewalker: On".
+
+6. Press B to go back, then start the game as normal.
+
+
+Sending a Pokemon on a stroll
+-----------------------------
+
+1. In the game, go to the Pokewalker option (on the title screen menu
+   when you load your save).
+
+2. Pick what you want to do, the same as you would with a real
+   Pokewalker.
+
+3. When the game says it's looking for the Pokewalker, press SELECT
+   once. SELECT is your virtual Pokewalker's button, just like the button
+   on a real one. A quick press is all it needs; you don't have to hold
+   it. Press it again for each new connection.
+
+4. When it's finished, save your game in the normal way.
+
+IMPORTANT: do NOT hold SELECT and LEFT together while the game is
+searching. Holding both for about two seconds wipes the virtual
+Pokewalker back to a brand-new one, the same as deleting it. A quick
+accidental press does nothing. If a Pokemon was out on a stroll when that
+happens, close the game and start it again: SD Transporter notices and
+puts the walker back.
+
+The first time you connect, the game will register the walker to you,
+just like a new real Pokewalker. Don't press anything or move the
+console apart while it registers. If registering gets cut off and the
+game later says "This Pokewalker has not been registered", close the
+game and start it again: SD Transporter puts your registered walker
+back. (A brand-new walker that was never registered just needs pairing
+again from the game's Pokewalker menu.)
+
+
+Walking, catching and finding items
+-----------------------------------
+
+1. Close the game (turn the console off and on, or go back to
+   TWiLight Menu++).
+
+2. Open "Pokewalker-NDS" from TWiLight Menu++. On a 3DS with homebrew
+   you can open the 3DS Pokewalker app instead. It counts your real
+   steps.
+
+3. Choose your walker from the list. Your Pokemon starts walking.
+   Steps build up while the app is open, and also while the console is
+   closed or asleep in the app.
+
+4. Use the Poke Radar to catch Pokemon and Dowsing to find items.
+
+5. When you're done, press START. This saves and closes the app. Always
+   leave with START, otherwise your progress isn't saved.
+
+An empty walker still counts steps and watts, but you need to send a
+Pokemon from the game to use the Radar and Dowsing.
+
+
+Taking it out on your phone (optional)
+--------------------------------------
+
+The Android app (see the Android folder) can carry your walker around
+and count real steps. Your console and phone need to be on the same
+Wi-Fi network.
+
+  1. In the Pokewalker-NDS companion, open your walker, go to Settings,
+     then Phone sync. Leave this screen open.
+  2. On the phone, open Console Wi-Fi sync, type in or pick the
+     console's IP address (shown on the console screen), and choose
+     Receive Pokemon from console.
+  3. To bring it back later, open Phone sync on the console again and
+     choose Return Pokemon on the phone.
+
+While the phone has your Pokemon, the game and the console companion
+can't use that walker. That's on purpose, so you can't end up with two
+copies. Always return it to the console before playing HGSS.
+
+
+Bringing the Pokemon home
+-------------------------
+
+Start the game, choose the Pokewalker option to return your Pokemon, and
+press SELECT again when it searches. Anything you caught or found comes
+across too. Save your game afterwards.
+
+
+Where the walker is kept
+------------------------
+
+Each save gets its own walker file. It sits next to your save and has
+the same name, ending in .walker instead of .sav. For example:
+
+  roms/nds/saves/Pokemon HeartGold.sav
+  roms/nds/saves/Pokemon HeartGold.walker
+
+Copy that file somewhere safe now and then. Before every game launch,
+SD Transporter also makes a backup in roms/nds/saves/transfers/backups.
+If something ever goes wrong, the companion app can restore one of
+those for you.
+
+
+If it doesn't connect
+---------------------
+
+  - Check the game's settings again: "Bootstrap: Nightly" and
+    "Virtual Pokewalker: On".
+  - Make sure you press SELECT while the game is searching.
+  - Look for _nds/nds-bootstrap/pokewalker-error.txt on your card. If
+    it's there, it says why the walker wasn't connected.
+  - If your Pokemon is out with the phone app, bring it back to the
+    console first. The game can't see a walker the phone is holding.
+
+
+"There is already a Pokemon on the Pokewalker"
+----------------------------------------------
+
+This happens when a send got onto the walker but the game didn't finish
+saving, so the game still has your Pokemon in your party or PC. Close the
+game and start it again from TWiLight Menu++. SD Transporter checks the
+walker against your save every time the game starts, removes the leftover
+copy, and you can send a Pokemon again. If it fixes anything, it writes a
+note to _nds/nds-bootstrap/pokewalker-repair.txt.
+
+It also works the other way: if your save says a Pokemon is out but the
+walker has lost it, it puts the walker back from a saved copy.

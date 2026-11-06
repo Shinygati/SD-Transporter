@@ -503,7 +503,7 @@ void uiBottom(const UIState *s) {
                           : s->screen == UI_PACK     ? "Pokémon & items"
                           : s->screen == UI_REPLACE  ? "Pack full — choose a slot"
                           : s->screen == UI_CARD     ? "Trainer card"
-                          : s->screen == UI_SETTINGS ? "Settings 1.6.1"
+                          : s->screen == UI_SETTINGS ? "Settings 1.6.2"
                                                      : "Adventure journal";
     label(17, 12, .52f, INK, heading, 290);
     if (s->screen == UI_HOME) {
