@@ -5,6 +5,8 @@ final class Native {
     static final int REGISTERED=0,HAS_POKEMON=1,TOTAL=2,STROLL=3,TODAY=4,WATTS=5,SPECIES=6,LEVEL=7,BOND=8,POKEMON_COUNT=9,ITEM_COUNT=10,VISITOR=11;
     static native long[] info(byte[] ee);
     static native boolean walkable(byte[] ee);
+    /** Repairs mirrored records in place; false if the walker must not be saved. */
+    static native boolean check(byte[] ee);
     static native String text(byte[] ee,int kind);
     static native String species(int id);
     static native String item(int id);

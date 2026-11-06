@@ -157,7 +157,7 @@ void uiTop(const UIState *s) {
     }
     wrap(16, 149, INK,
          s->phoneLocked ? "Walker is checked out to a phone."
-                        : s->loaded && s->info.registered ? "Keep walking. A wild Pokémon may join." : "Choose an active walker below.",
+                        : s->loaded && s->info.registered ? "No partner. Send a Pokémon from HGSS." : "Choose an active walker below.",
          28, 2);
     return;
   }
@@ -420,7 +420,7 @@ void uiBottom(const UIState *s) {
     return;
   }
   const char *title = s->screen == UI_HOME       ? "Adventure menu"
-                      : s->screen == UI_SETTINGS ? "Settings 1.6.0"
+                      : s->screen == UI_SETTINGS ? "Settings 1.6.1"
                       : s->screen == UI_RADAR    ? "Poke Radar"
                       : s->screen == UI_DOWSE    ? "Dowsing"
                       : s->screen == UI_BATTLE   ? "Choose a move"

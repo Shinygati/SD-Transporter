@@ -12,7 +12,18 @@ extern "C" {
 #include "species.h"
 extern const DISC_INTERFACE __io_dsisd;
 }
-static int sectorRead(void *,uint32_t sector,unsigned char *out){return __io_dsisd.readSectors(sector,1,out);}
+/* __io_dsisd hands the buffer address to the ARM7, which cannot see the ARM9
+ * DTCM where libnds keeps the stack. cartMapFile() passes stack buffers, so a
+ * direct read leaves them untouched and every MBR/VBR check fails. Bounce each
+ * sector through a cache-line aligned main-RAM buffer instead. */
+static unsigned char sectorBounce[512] __attribute__((aligned(32)));
+static int sectorRead(void *,uint32_t sector,unsigned char *out){
+ DC_FlushRange(sectorBounce,sizeof(sectorBounce));
+ if(!__io_dsisd.readSectors(sector,1,sectorBounce))return 0;
+ DC_InvalidateRange(sectorBounce,sizeof(sectorBounce));
+ memcpy(out,sectorBounce,sizeof(sectorBounce));
+ return 1;
+}
 int cartWalkerPrepare(const char code[4],unsigned headerCrc){
  CartStage *stage=(CartStage *)CART_STAGE_ADDR;
  unsigned char *image=(unsigned char *)(CART_STAGE_ADDR+CART_STAGE_IMAGE);

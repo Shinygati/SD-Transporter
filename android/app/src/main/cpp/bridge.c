@@ -37,6 +37,11 @@ JNIEXPORT jboolean JNICALL JNI_NAME(walkable)(JNIEnv *env,jclass cls,jbyteArray 
     int ok=walkerCanWalk(ee);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);
     return ok?JNI_TRUE:JNI_FALSE;
 }
+JNIEXPORT jboolean JNICALL JNI_NAME(check)(JNIEnv *env,jclass cls,jbyteArray data) {
+    (void)cls;uint8_t *ee=bytes(env,data);if(!ee)return JNI_FALSE;
+    walkerRepairRecords(ee);int ok=walkerValidate(ee);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,0);
+    return ok?JNI_TRUE:JNI_FALSE;
+}
 JNIEXPORT jint JNICALL JNI_NAME(resume)(JNIEnv *env,jclass cls,jbyteArray data,jlong now,jint rate) {
     (void)cls;uint8_t *ee=bytes(env,data);if(!ee)return 0;int out=walkerResume(ee,(uint32_t)now,(unsigned)rate);
     (*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,0);return out;

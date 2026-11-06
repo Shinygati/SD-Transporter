@@ -8,7 +8,4 @@ void ndsUiRect(int x, int y, int w, int h, uint16_t color);
 void ndsUiText(int x, int y, int scale, uint16_t color, const char *text,
                int columns);
 void ndsUiEnd(void);
-#ifdef NDS_UI_PREVIEW
-void ndsUiWrite(const char *path, int screen);
-#endif
 #endif

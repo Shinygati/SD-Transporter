@@ -6,6 +6,14 @@ enum WalkerCore {
         guard data.count == 65536 else { return false }
         return data.withUnsafeBytes { pw_walkable($0.bindMemory(to: UInt8.self).baseAddress) != 0 }
     }
+    /// Same pre-save check as the consoles: repairs a damaged mirrored record
+    /// copy and returns nil if any Pokémon summary or record is malformed.
+    static func checked(_ data: Data) -> Data? {
+        guard data.count == 65536 else { return nil }
+        var copy = data
+        let ok = copy.withUnsafeMutableBytes { pw_check($0.bindMemory(to: UInt8.self).baseAddress) != 0 }
+        return ok ? copy : nil
+    }
     static var now: UInt32 { UInt32(clamping: Int64(Date().timeIntervalSince1970) - 946684800) }
     static func info(_ data: Data?) -> [Int64] {
         guard let data, data.count == 65536 else { return Array(repeating: 0, count: 14) }

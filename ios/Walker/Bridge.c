@@ -51,3 +51,4 @@ void pw_battle(uint8_t *data,int v[7],int action){
 uint32_t pw_crc(const uint8_t *data,unsigned length){return walkerCrc(data,length);}
 
 #include "../../shared/walkerclassic.c"
+int pw_check(uint8_t *data){walkerRepairRecords(data);return walkerValidate(data);}

@@ -388,6 +388,17 @@ int leaseReturn(const char *p, const uint8_t token[16], const uint8_t *incoming,
            walkerCrc(original, WALKER_FILE_SIZE) == loan.baseCrc &&
            compatible(original, incoming);
   free(original);
+  if (ok) {
+    /* Same data check the companions apply before saving. */
+    uint8_t *checked = malloc(WALKER_FILE_SIZE);
+    ok = checked != 0;
+    if (ok) {
+      memcpy(checked, incoming, WALKER_FILE_SIZE);
+      walkerRepairRecords(checked);
+      ok = walkerValidate(checked) && !memcmp(checked, incoming, WALKER_FILE_SIZE);
+      free(checked);
+    }
+  }
   if (!ok)
     return fail(error, size,
                 "Return has a different walker, stroll, or invalid progress.");

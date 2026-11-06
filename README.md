@@ -1,6 +1,6 @@
 # SD Transporter
 
-Current version **1.6.0**.
+Current version **1.6.1**.
 
 For app setup, activities, Wi-Fi handoffs and recovery, read [howtouse.txt](howtouse.txt).
 
@@ -42,7 +42,7 @@ The companions provide:
 - Walking events, including item discoveries and wild visitors.
 - The original large portrait and animation stored in the walker file, including original portrait crops. No retail sprite collection is bundled. The phone shell uses the image supplied by the project owner; its LCD is replaced at runtime with current profile data.
 - `/roms`-only walker discovery on the console, readable menus, D-pad navigation and graphical progress indicators.
-- Registered empty walkers can walk and gain the course's original designated joining Pokémon, including its uploaded portrait. Blank/unregistered files and empty files without valid course data are refused. An existing companion is never replaced by automatic joining.
+- Registered empty walkers keep earning steps and watts, but no Pokémon joins them: HGSS treats a joined partner as an event Pokémon and builds it from walker records the companions never had, which made it illegal. Send a partner from HGSS. Blank/unregistered files and empty files without valid course data are refused.
 
 The companions recreate Pokéwalker activities without executing retail firmware. Encounters are shiny-locked. On Android and iPhone, tap the Pokéwalker to open its original-style menu, three-button controls and uploaded sound scores. Progress is shared with the current profile. Display assets come from your own data; menu timing and piezo audio are recreated.
 
@@ -153,7 +153,7 @@ Settings are stored under `sd:/_nds/nds-bootstrap/`: `slot2.ini`, `poketransfer.
 ### Pokéwalker and phone sync
 
 1. Enable the virtual Pokéwalker for HGSS and send a Pokémon on a stroll using the game's menu.
-2. Close HGSS, open the console companion, and select a valid registered walker beneath `/roms`. It may already have a companion, or walk solo using its uploaded joining-course data.
+2. Close HGSS, open the console companion, and select a valid registered walker beneath `/roms`. It must have a partner sent from HGSS for Radar, Dowsing and catches; an empty walker only earns steps and watts.
 3. For phone use, connect both devices to the same local network and open **Settings → Phone sync** on the console.
 4. Open **Console Wi-Fi sync** on the phone, enter or select the console IP, and choose **Receive Pokémon from console**. Keep the console sync screen open.
 5. To return, reopen console Phone sync and choose **Return Pokémon** on the phone.
@@ -229,6 +229,15 @@ See [LICENSE](LICENSE), the component license files and individual source notice
 Phone sync remains available when the console has no walker files. From the file list press **Y**, select the HGSS ROM under /roms, then **A** and confirm receiving the phone copy. This creates the matching missing save-folder destination and verifies the final .walker before acknowledging the return. If Android/iPhone reports a revoked old session, use its explicit phone-copy recovery confirmation with this console screen open. Existing active console files and other phone leases cannot be overwritten.
 
 Deleting a phone profile's active Pokémon clears its trainer-name/public-ID pairing. The next receive can bind that empty profile to another trainer. An ordinary successful return keeps the pairing. Recovery copies remain separate and do not appear as active Pokémon.
+
+## v1.6.1 update
+
+- **Lost walker Pokémon (DSi/3DS):** if HGSS resent "connection complete" while the final write was still in progress, the walker ignored it, and a returned Pokémon could end up in neither the game nor the walker. The walker now answers a resent completion, and while the game is waiting it writes everything at once instead of one sector per frame. The real-cartridge launcher drains the same way.
+- **Real HGSS cartridge launcher:** fixed "Cannot verify the SD sector map". Raw SD reads went into stack buffers in ARM9 DTCM, which the ARM7 SD driver cannot reach; they now go through a main-RAM buffer.
+- **Empty move slot with PP:** HGSS's overlay 112 sets walker move IDs over the default moveset without fixing PP. While the walker session runs, the bootstrap patches that routine in RAM so empty slots get 0 PP. It only patches an exact, unique match.
+- **Illegal Pokémon:** removed the solo-join feature, which produced event-path Pokémon HGSS could not build legally.
+- **Data checks:** before every save, the NDS, 3DS, Android and iPhone companions repair a damaged mirrored-record copy from the good one and refuse to save malformed walker data (species, level, item, form, or moves: missing first move, gaps or repeats). Consoles apply the same check to phone returns. Caught Pokémon are only stored from well-formed course data.
+- Removed unused code: the UI preview build hooks and unused helpers.
 
 ## v1.5.1 update
 

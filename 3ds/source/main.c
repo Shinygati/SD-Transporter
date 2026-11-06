@@ -175,6 +175,11 @@ static int saveToDisk(void) {
       (previous.hasPokemon &&
        (!updated.hasPokemon || updated.species != previous.species)))
     return saveFailure("Partner preservation check", EINVAL);
+  /* Keep mirrored record checksums consistent and never publish a Pokemon
+   * summary HGSS would turn into a malformed Pokemon. */
+  walkerRepairRecords(ee);
+  if (!walkerValidate(ee))
+    return saveFailure("Walker data check", EINVAL);
   savingStage("Preserving the previous save...");
   if (!writeFile(baktemp, scratch))
     return saveFailure("Writing backup", errno);
@@ -249,10 +254,8 @@ static int updateSteps(int show) {
     dirty = 1;
   refresh();
   if (show || report.events) {
-    if (report.joined)
-      notify("A wild Pokémon joined you!");
-    else if (!ui.info.hasPokemon)
-      notify("Walking solo. A wild Pokémon may join you.");
+    if (!ui.info.hasPokemon)
+      notify("No partner. Steps still count; send a Pokémon from HGSS.");
     else if (walkerPendingEncounter(ee))
       notify("A wild Pokémon is nearby! Choose the visitor tile.");
     else if (report.clockBehind)
@@ -262,8 +265,8 @@ static int updateSteps(int show) {
     else {
       char text[160];
       snprintf(text, sizeof(text),
-               "+%lu steps  ·  %u items  ·  %u new companion",
-               (unsigned long)report.steps, report.items, report.joined);
+               "+%lu steps  ·  %u items",
+               (unsigned long)report.steps, report.items);
       notify(text);
     }
   }
@@ -538,7 +541,7 @@ static void openWalker(void) {
   lastAdvance = now();
   rebaseSensor();
   refresh();
-  notify(!ui.info.hasPokemon ? "Walking solo. A wild Pokémon may join."
+  notify(!ui.info.hasPokemon ? "No partner. Steps still count; send one from HGSS."
          : ui.walkingEnabled ? "Walking started. Sleep counts too."
                            : "Step counter is paused.");
 }
@@ -594,7 +597,7 @@ static int ready(void) {
   refresh();
   if (!ui.info.registered || !ui.info.hasPokemon) {
     result("Send a Pokémon first.",
-           "Keep walking until a Pokémon joins, or send one from HGSS.");
+           "Send a Pokémon on a stroll from HGSS first.");
     return 0;
   }
   if (ee[0x156 + 23] & 1) {
@@ -1383,9 +1386,7 @@ int main(void) {
         if (memcmp(scratch, ee, sizeof(ee)))
           dirty = 1;
         lastAdvance = stamp;
-        if (progress.joined)
-          notify("A wild Pokémon joined you!");
-        else if (progress.encounters)
+        if (progress.encounters)
           notify("A wild visitor is waiting!");
         else if (progress.items)
           notify("Your Pokémon found an item!");

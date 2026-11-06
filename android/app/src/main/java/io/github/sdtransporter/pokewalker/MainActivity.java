@@ -117,7 +117,7 @@ public final class MainActivity extends Activity {
             else {
                 long[] i=Native.info(state.data);
                 String mode=state.revoked?"Session revoked":state.returnPending?"Return pending · phone copy locked":state.mode==2?"Phone pedometer":state.mode==1?"Time-based":"Walking paused";
-                stats.setText((i[Native.HAS_POKEMON]!=0?Native.species((int)i[Native.SPECIES])+" · Lv "+i[Native.LEVEL]:"Walking solo · a wild Pokémon may join")+"\n"+i[Native.STROLL]+" steps · "+i[Native.WATTS]+" watts\n"+Native.text(state.data,2)+"\nItems: "+packSummary(true)+"\nCaught: "+packSummary(false)+"\n"+mode);
+                stats.setText((i[Native.HAS_POKEMON]!=0?Native.species((int)i[Native.SPECIES])+" · Lv "+i[Native.LEVEL]:"No partner · send a Pokémon from HGSS")+"\n"+i[Native.STROLL]+" steps · "+i[Native.WATTS]+" watts\n"+Native.text(state.data,2)+"\nItems: "+packSummary(true)+"\nCaught: "+packSummary(false)+"\n"+mode);
             }
             picture.invalidate();
         }
@@ -402,7 +402,7 @@ public final class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==20)startTracking(false);if(request==30){Runnable action=pendingPeerPermission;pendingPeerPermission=null;boolean allowed=grants.length>0;for(int value:grants)allowed&=value==PackageManager.PERMISSION_GRANTED;if(allowed&&action!=null)action.run();else toast("Bluetooth permission is needed to find and connect nearby phones.");}}
     private void radarStart(){
         synchronized(WalkerStore.LOCK){
-            if(!owned())return;long[] info=Native.info(state.data);if(info[Native.HAS_POKEMON]==0){toast("Keep walking until a Pokémon joins, or send one from HGSS.");return;}int visitor=(int)info[Native.VISITOR];
+            if(!owned())return;long[] info=Native.info(state.data);if(info[Native.HAS_POKEMON]==0){toast("Send a Pokémon on a stroll from HGSS first.");return;}int visitor=(int)info[Native.VISITOR];
             if(visitor>0){Native.command(state.data,5,0);save();startBattle(visitor-1);return;}
             if(info[Native.WATTS]<10){toast("Poké Radar needs 10 watts.");return;}
             int[] choice=Native.encounter(state.data);if(choice[0]<0){toast("No usable route encounters.");return;}

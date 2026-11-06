@@ -36,8 +36,14 @@ import SwiftUI
     private func canTrack(_ id: String, _ value: WalkerJournal) -> Bool {
         value.data != nil && !value.revoked && !value.token.isEmpty && !value.returnPending && !blockedProfiles.contains(id) && !(busy && id == selectedProfileID)
     }
-    private func persistProfile(_ next: WalkerJournal, id: String) throws {
+    private func persistProfile(_ proposed: WalkerJournal, id: String) throws {
         guard let d = profileDisks[id], !blockedProfiles.contains(id) else { throw WalkerError.message("Storage needs attention. Existing files were kept.") }
+        var next = proposed
+        if let data = next.data {
+            /* A data-check refusal is not a storage fault: keep the profile usable. */
+            guard let checked = WalkerCore.checked(data) else { throw WalkerError.message("Walker data check failed. Your last saved progress was kept.") }
+            next.data = checked
+        }
         do { try d.save(next); profileStates[id] = next; if id == selectedProfileID { state = next }; objectWillChange.send() }
         catch { blockedProfiles.insert(id); if id == selectedProfileID { storageBlocked = true }; throw error }
     }

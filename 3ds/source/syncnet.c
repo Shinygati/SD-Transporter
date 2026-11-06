@@ -196,7 +196,6 @@ int syncStartRecovery(const char *path,const unsigned char *baseline,SyncEvent e
   recoveryMode=baseline?1:2;
   return 1;
 }
-int syncReady(void) { return networkState == 2; }
 int syncBusy(void) { return peer != NO_SOCKET; }
 const char *syncAddress(void) { return address; }
 const char *syncStatus(void) { return statusText; }

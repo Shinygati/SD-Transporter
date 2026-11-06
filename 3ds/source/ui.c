@@ -6,68 +6,32 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#ifndef UI_PREVIEW
 #include <citro2d.h>
 static C3D_RenderTarget *targets[2];
 static C2D_TextBuf textbuf, measurebuf;
-#else
-static FILE *canvas;
-void uiPreviewOpen(const char *p, int bottom) {
-    canvas = fopen(p, "w");
-    fprintf(canvas, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"240\">",
-            bottom ? 320 : 400);
-}
-void uiPreviewClose(void) {
-    fputs("</svg>", canvas);
-    fclose(canvas);
-}
-#endif
 #define RGB(r, g, b) ((uint32_t)(r) | ((uint32_t)(g) << 8) | ((uint32_t)(b) << 16) | 0xff000000u)
 static const uint32_t INK = RGB(233, 246, 240), MUTED = RGB(139, 172, 170),
                       TEAL = RGB(68, 221, 179), GOLD = RGB(252, 202, 102), PANEL = RGB(23, 48, 59),
                       RED = RGB(237, 111, 111), LCD = RGB(198, 219, 168);
 static void rect(float x, float y, float w, float h, uint32_t c) {
-#ifndef UI_PREVIEW
     C2D_DrawRectSolid(x, y, 0, w, h, c);
-#else
-    fprintf(canvas, "<rect x=\"%g\" y=\"%g\" width=\"%g\" height=\"%g\" fill=\"#%02x%02x%02x\"/>",
-            x, y, w, h, c & 255, (c >> 8) & 255, (c >> 16) & 255);
-#endif
 }
 static void circle(float x, float y, float radius, uint32_t c) {
-#ifndef UI_PREVIEW
     C2D_DrawCircleSolid(x, y, 0, radius, c);
-#else
-    fprintf(canvas, "<circle cx=\"%g\" cy=\"%g\" r=\"%g\" fill=\"#%02x%02x%02x\"/>", x, y, radius,
-            c & 255, (c >> 8) & 255, (c >> 16) & 255);
-#endif
 }
 static void triangle(float x, float y, float w, float h, uint32_t c) {
-#ifndef UI_PREVIEW
     C2D_DrawTriangle(x, y, c, x - w / 2, y + h, c, x + w / 2, y + h, c, 0);
-#else
-    fprintf(canvas, "<polygon points=\"%g,%g %g,%g %g,%g\" fill=\"#%02x%02x%02x\"/>", x, y,
-            x - w / 2, y + h, x + w / 2, y + h, c & 255, (c >> 8) & 255, (c >> 16) & 255);
-#endif
 }
 /* Bottom-screen text has a readable minimum size. Measure and wrap/clip
  * content instead of shrinking whole sentences into a few pixels. */
 static int bottomText;
 static float textWidth(const char *str, float scale) {
-#ifndef UI_PREVIEW
     C2D_Text text;
     float width;
     C2D_TextBufClear(measurebuf);
     C2D_TextParse(&text, measurebuf, str);
     C2D_TextGetDimensions(&text, scale, scale, &width, 0);
     return width;
-#else
-    unsigned glyphs = 0;
-    for (const unsigned char *p = (const unsigned char *)str; *p; p++)
-        if ((*p & 0xc0) != 0x80)
-            glyphs++;
-    return glyphs * 30 * scale * .55f;
-#endif
 }
 static unsigned previousGlyph(const char *str, unsigned length) {
     if (!length)
@@ -93,7 +57,6 @@ static void label(float x, float y, float scale, uint32_t c, const char *str, fl
         }
         str = fitted;
     }
-#ifndef UI_PREVIEW
     C2D_Text t;
     C2D_TextParse(&t, textbuf, str);
     C2D_TextOptimize(&t);
@@ -101,26 +64,6 @@ static void label(float x, float y, float scale, uint32_t c, const char *str, fl
     C2D_TextGetDimensions(&t, scale, scale, &w, 0);
     (void)w;
     C2D_DrawText(&t, C2D_WithColor, x, y, 0, scale, scale, c);
-#else
-    float size = 30 * scale;
-    float estimate = (float)strlen(str) * size * .55f;
-    (void)estimate;
-    fprintf(canvas,
-            "<text x=\"%g\" y=\"%g\" font-size=\"%g\" font-family=\"DejaVu Sans\" "
-            "fill=\"#%02x%02x%02x\">",
-            x, y + size * .9f, size, c & 255, (c >> 8) & 255, (c >> 16) & 255);
-    for (const char *p = str; *p; p++) {
-        if (*p == '&')
-            fputs("&amp;", canvas);
-        else if (*p == '<')
-            fputs("&lt;", canvas);
-        else if (*p == '>')
-            fputs("&gt;", canvas);
-        else
-            fputc(*p, canvas);
-    }
-    fputs("</text>", canvas);
-#endif
 }
 static void paragraph(float x, float y, float scale, uint32_t color, const char *text, float width,
                       unsigned lines, float spacing) {
@@ -301,7 +244,6 @@ static void status(const UIState *s) {
     paragraph(21, 183, .55f, INK, text, 278, 2, 17);
 }
 int uiInit(void) {
-#ifndef UI_PREVIEW
     gfxInitDefault();
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE))
         return 0;
@@ -314,35 +256,24 @@ int uiInit(void) {
     textbuf = C2D_TextBufNew(8192);
     measurebuf = C2D_TextBufNew(1024);
     return textbuf && measurebuf && targets[0] && targets[1];
-#else
-    return 1;
-#endif
 }
 void uiExit(void) {
-#ifndef UI_PREVIEW
     C2D_TextBufDelete(textbuf);
     C2D_TextBufDelete(measurebuf);
     C2D_Fini();
     C3D_Fini();
     gfxExit();
-#endif
 }
 void uiBegin(int bottom) {
-#ifndef UI_PREVIEW
     if (!bottom) {
         C2D_TextBufClear(textbuf);
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     }
     C2D_TargetClear(targets[bottom], RGB(10, 24, 35));
     C2D_SceneBegin(targets[bottom]);
-#else
-    (void)bottom;
-#endif
 }
 void uiEnd(void) {
-#ifndef UI_PREVIEW
     C3D_FrameEnd(0);
-#endif
 }
 void uiTop(const UIState *s) {
     bottomText = 0;
@@ -572,7 +503,7 @@ void uiBottom(const UIState *s) {
                           : s->screen == UI_PACK     ? "Pokémon & items"
                           : s->screen == UI_REPLACE  ? "Pack full — choose a slot"
                           : s->screen == UI_CARD     ? "Trainer card"
-                          : s->screen == UI_SETTINGS ? "Settings 1.6.0"
+                          : s->screen == UI_SETTINGS ? "Settings 1.6.1"
                                                      : "Adventure journal";
     label(17, 12, .52f, INK, heading, 290);
     if (s->screen == UI_HOME) {
@@ -635,7 +566,7 @@ void uiBottom(const UIState *s) {
         fmt(20, 52, .53f, INK, 280, "Trainer  %s",
             s->info.trainer[0] ? s->info.trainer : "Not registered");
         if(s->info.hasPokemon) fmt(20, 85, .55f, INK, 280, "%s · Lv %u", speciesName(s->info.species), s->info.level);
-        else label(20,85,.55f,INK,"Walking solo · a wild Pokémon may join",280);
+        else label(20,85,.55f,INK,"No partner · send a Pokémon from HGSS",280);
         fmt(20, 112, .43f, MUTED, 280, "Bond  %u / 255", s->info.friendship);
         fmt(20, 139, .43f, MUTED, 280, "%u Pokémon   ·   %u items packed", s->info.pokemonCount,
             s->info.itemCount);

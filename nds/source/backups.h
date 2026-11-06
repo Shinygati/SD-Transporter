@@ -7,7 +7,6 @@ int backupsLimited(void);
 int backupsDescribe(int index,char *name,unsigned nameSize,char *detail,unsigned detailSize);
 int backupsDelete(int index);
 int backupsPreserveActive(const char *walker,const unsigned char *data);
-int backupsPreserveReward(const char *walker,const unsigned char *data);
 int backupsInterruptedCount(const char *walker);
 int backupsInterruptedDescribe(const char *walker,int index,char *name,unsigned size,char *detail,unsigned detailSize);
 int backupsRestoreInterrupted(const char *walker,int index);

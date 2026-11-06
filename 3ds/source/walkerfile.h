@@ -22,7 +22,7 @@ typedef struct {
 } WalkerInfo;
 typedef struct {
     uint32_t steps;
-    unsigned items, joined, watts, events, encounters;
+    unsigned items, watts, events, encounters;
     int clockBehind;
 } WalkerReport;
 typedef struct {
@@ -36,12 +36,11 @@ typedef struct {
 int walkerRead(const uint8_t *, WalkerInfo *);
 /* Public Trainer ID plus canonical encoded trainer name, 36 lower-case hex chars. */
 int walkerTrainerKey(const uint8_t *, char out[37]);
-/* Registered empty walkers may walk when the uploaded course has a valid
- * joining companion. Blank/unregistered and malformed occupied files may not. */
+/* Registered empty walkers with valid course data may walk (steps and watts
+ * only). Blank/unregistered and malformed occupied files may not. */
 int walkerCanWalk(const uint8_t *);
 uint32_t walkerPendingSteps(const uint8_t *, uint32_t, uint32_t);
-uint32_t walkerCredit(uint8_t *, uint32_t, uint32_t);
-int walkerAddSteps(uint8_t *, uint32_t, uint32_t, WalkerReport *);
+int walkerAddSteps(uint8_t *image, uint32_t now, uint32_t steps, WalkerReport *report);
 int walkerResume(uint8_t *, uint32_t, uint32_t);
 int walkerAdvance(uint8_t *, uint32_t, uint32_t, WalkerReport *);
 unsigned walkerPendingEncounter(const uint8_t *);
@@ -66,4 +65,9 @@ unsigned walkerPokemonId(const uint8_t *, unsigned);
 unsigned walkerRoutePokemonId(const uint8_t *, unsigned);
 unsigned walkerRouteItemId(const uint8_t *, unsigned);
 uint32_t walkerCrc(const uint8_t *, unsigned);
+/* Mirrored identity/health/unique-ID records valid and identical, and every
+ * Pokemon summary (partner and caught slots) well formed for HGSS. */
+int walkerValidate(const uint8_t *);
+/* Rewrite a damaged mirrored record from its good copy; 0 if both are bad. */
+int walkerRepairRecords(uint8_t *);
 #endif

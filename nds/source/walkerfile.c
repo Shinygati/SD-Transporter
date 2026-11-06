@@ -291,8 +291,63 @@ static void event(uint8_t *ee, unsigned kind, unsigned value) {
     setmeta(ee, M_COUNT, meta(ee, M_COUNT) + 1);
     commitmeta(ee);
 }
+/* A 16-byte walker Pokemon summary as HGSS consumes it in overlay 112:
+ * species, held item, four moves, level, form/gender byte. Real course data
+ * always has a first move and packs moves to the front without repeats. */
+static int validSummary(const uint8_t *p) {
+    unsigned species = le16(p), item = le16(p + 2), level = p[12];
+    if (!validSpecies(species) || level < 1 || level > 100 || (item && !validItem(item)))
+        return 0;
+    if ((p[13] & 0x1f) > 27) /* form index (Unown has the most) */
+        return 0;
+    int ended = 0;
+    for (unsigned m = 0; m < 4; m++) {
+        unsigned move = le16(p + 4 + m * 2);
+        if (!move) { if (!m) return 0; ended = 1; continue; }
+        if (ended || move > 467) return 0;
+        for (unsigned k = 0; k < m; k++)
+            if (le16(p + 4 + k * 2) == move) return 0;
+    }
+    return 1;
+}
+static int recordOk(const uint8_t *ee, unsigned a, unsigned n) { return sum(ee + a, n) == ee[a + n]; }
+/* Mirrored records: if one copy is damaged, rewrite it from the good one. */
+static int repairRecord(uint8_t *ee, unsigned a, unsigned b, unsigned n) {
+    int ga = recordOk(ee, a, n), gb = recordOk(ee, b, n);
+    if (ga && gb) {
+        if (memcmp(ee + a, ee + b, n + 1)) memmove(ee + b, ee + a, n + 1);
+        return 1;
+    }
+    if (!ga && !gb) return 0;
+    if (ga) memmove(ee + b, ee + a, n + 1);
+    else memmove(ee + a, ee + b, n + 1);
+    return 1;
+}
+int walkerRepairRecords(uint8_t *ee) {
+    WalkerInfo i;
+    if (!walkerRead(ee, &i) || !i.setUp) return 0;
+    return repairRecord(ee, ID1, ID2, 104) && repairRecord(ee, HD1, HD2, 24) &&
+           repairRecord(ee, 0x83, 0x183, 0x28);
+}
+int walkerValidate(const uint8_t *ee) {
+    WalkerInfo i;
+    if (!walkerRead(ee, &i)) return 0;
+    if (!i.setUp) return 1; /* blank, untouched walker */
+    if (!recordOk(ee, ID1, 104) || !recordOk(ee, ID2, 104) || memcmp(ee + ID1, ee + ID2, 105) ||
+        !recordOk(ee, HD1, 24) || !recordOk(ee, HD2, 24) || memcmp(ee + HD1, ee + HD2, 25))
+        return 0;
+    if (i.hasPokemon && !validSummary(ee + WALKER_ROUTE)) return 0;
+    for (unsigned s = 0; s < 3; s++) {
+        const uint8_t *p = ee + WALKER_POKEMON + s * 16;
+        if (le16(p) && !validSummary(p)) return 0;
+        unsigned item = walkerItemId(ee, s);
+        if (item && !validItem(item)) return 0;
+    }
+    return 1;
+}
 int walkerStorePokemon(uint8_t *ee, unsigned choice, int slot, uint32_t now) {
-    if (choice >= 3 || !validSpecies(walkerRoutePokemonId(ee, choice)))
+    if (choice >= 3 || !validSpecies(walkerRoutePokemonId(ee, choice)) ||
+        !validSummary(ee + WALKER_ROUTE + 0x52 + choice * 16))
         return 0;
     if (slot < 0)
         slot = emptyPokemon(ee);
@@ -387,29 +442,6 @@ int walkerChooseItemEx(uint8_t *ee,unsigned *out,int expanded) {
     if(walkerExpandedReward(ee,out,0))return 1;
     return walkerChooseItem(ee,out);
 }
-static void join(uint8_t *ee, uint32_t now) {
-    uint8_t id[104];
-    memcpy(id, reliable(ee, ID1, ID2, 104), 104);
-    id[0x5b] |= 6;
-    memcpy(id + 4, id, 4);
-    memcpy(id + 10, id + 8, 2);
-    mirror(ee, ID1, ID2, id, 104);
-    memcpy(ee + WALKER_ROUTE, ee + WALKER_ROUTE + 0x52 + 32, 16);
-    ee[WALKER_ROUTE + 13] &= 0x7f; /* Original generated-companion appearance bit. */
-    memset(ee + WALKER_ROUTE + 16, 0, 22);
-    ee[WALKER_ROUTE + 0x26] = 70;
-    memmove(ee + 0x91be, ee + 0x9a7e + 768, 384);
-    memmove(ee + 0x933e, ee + 0x9efe, 1536);
-    memmove(ee + 0x993e, ee + 0xa4fe + 640, 320);
-    uint8_t health[24];
-    memcpy(health, reliable(ee, HD1, HD2, 24), sizeof(health));
-    health[16] = health[17] = 0; /* New companion's elapsed minutes. */
-    health[19] = 0;
-    mirror(ee, HD1, HD2, health, sizeof(health));
-    for (unsigned n = 0; n < 23; n++) ee[0xcf0c + n * 136 + 132] = 0;
-    diary(ee, now, 23, 2, 0);
-    event(ee, 2, le16(ee + WALKER_ROUTE));
-}
 static void social(uint8_t *ee, uint32_t stamp, WalkerReport *r) {
     WalkerInfo i;
     walkerRead(ee, &i);
@@ -419,11 +451,12 @@ static void social(uint8_t *ee, uint32_t stamp, WalkerReport *r) {
         return;
     unsigned hs = meta(ee, M_HSTEPS);
     if (!i.hasPokemon) {
-        if (hs >= 300 && validSpecies(walkerRoutePokemonId(ee, 2))) {
-            join(ee, stamp);
-            r->joined++;
-            r->events++;
-        }
+        /* No solo join. HGSS reads an ID_FLAG_JOINED partner through its
+         * event-distribution path (fateful encounter, OT/met/nickname taken
+         * from walker records this app never had), so a partner made from
+         * course data comes back as an illegal Pokemon. An empty walker still
+         * earns steps and watts; send a partner from HGSS. */
+        (void)hs;
         return;
     }
     /* Companion-app extension: an occasional free encounter can wait for the
@@ -670,11 +703,6 @@ int walkerAddSteps(uint8_t *ee, uint32_t now, uint32_t steps, WalkerReport *r) {
         commitmeta(ee);
     }
     return 1;
-}
-uint32_t walkerCredit(uint8_t *ee, uint32_t now, uint32_t rate) {
-    WalkerReport r;
-    walkerAdvance(ee, now, rate, &r);
-    return r.steps;
 }
 uint32_t walkerPendingSteps(const uint8_t *ee, uint32_t now, uint32_t rate) {
     WalkerInfo i;

@@ -86,7 +86,7 @@ struct WalkerHome: View {
                         Text("Return awaiting confirmation").font(.title2.bold())
                         Text("Phone copy locked. Retry from the console sync screen.")
                     } else if model.state.data != nil {
-                        Text(model.info[1] != 0 ? "\(WalkerCore.species(model.info[6])) · Lv \(model.info[7])" : "Walking solo · a wild Pokémon may join").font(.title2.bold())
+                        Text(model.info[1] != 0 ? "\(WalkerCore.species(model.info[6])) · Lv \(model.info[7])" : "No partner · send a Pokémon from HGSS").font(.title2.bold())
                         Text("\(model.info[3]) steps · \(model.info[5]) watts").font(.title3).foregroundStyle(WalkerTheme.mint)
                         Text(model.state.revoked ? "Session revoked" : model.state.returnPending ? "Return pending — activities paused" : model.state.mode == 2 ? "iPhone pedometer" : model.state.mode == 1 ? "Time-based walking" : "Walking paused")
                     } else { Text("Sync with a 3DS or NDS console over local Wi-Fi").font(.title3) }

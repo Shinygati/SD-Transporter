@@ -40,8 +40,8 @@ Close HGSS before opening its walker in a companion. The game creates a 64 KiB
 The console companion searches only /roms and its subfolders. Select the
 walker using the D-pad or touch screen and press A to open it. The preview
 shows its trainer name and public five-digit Trainer ID when available.
-A registered empty walker with valid joining-course data may walk alone until
-its designated course companion joins. A blank/unregistered file is not ready.
+A registered empty walker earns steps and watts but no Pokemon joins it; send
+a partner from HGSS. A blank/unregistered file is not ready.
 
 Android and iPhone receive a walker from a console over Wi-Fi; ordinary
 recovery exports do not automatically become an active phone walker.

@@ -47,7 +47,7 @@ Original Swift/bridge code is GPL-3.0-or-later; shared logic and source credits 
 
 ## Registered empty walkers and confirmed returns
 
-Registered empty walkers with valid uploaded joining-course data may now walk and gain the original designated course companion. Blank/unregistered or malformed files remain blocked, and joining cannot replace a companion already aboard. Console/phone handoffs permit the expected empty-to-generated-companion transition while retaining trainer, device, course and session checks. The companion event scheduler is an app implementation; original firmware timing is not claimed.
+Registered empty walkers keep earning steps and watts, but since v1.6.1 no Pokémon joins them: HGSS builds a joined partner as an event Pokémon from walker records the companions never had, so those partners were illegal. Send a partner from HGSS. Blank/unregistered or malformed files remain blocked. Console/phone returns still accept a partner that joined under an earlier version, so a phone-held walker is never stranded.
 
 Update the phone and console companions together. The phone requires either `X-Walker-Stored-CRC32` or a structured session-bound `PWRETURN1` receipt matching its returned EEPROM before clearing active ownership; until confirmation succeeds the phone keeps a frozen pending-return copy. Verified immutable recovery exports are retained. DS Lite Wi-Fi scanning cannot accept a handoff, and active/phone-owned walkers block Wi-Fi reconfiguration.
 

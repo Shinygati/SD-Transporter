@@ -20,6 +20,11 @@ static aFile walkerFile;
 static bool walkerOpened = false;
 static u32 walkerSeenSeq = 0, walkerIdleFrames = 0;
 
+/* HGSS is waiting for the withheld CONNECT_COMPLETE_ACK (0x68). */
+static bool completionPending(const WalkerControl *c) {
+	return !c->state && c->respLen >= 8 && c->resp[0] == 0x68;
+}
+
 static WalkerControl *control(void) {
 	WalkerControl *c = (WalkerControl *)walkerControl;
 	if (!c || c->magic != WALKER_MAGIC || c->version != WALKER_VERSION || !c->cluster) return 0;
@@ -32,7 +37,7 @@ bool walkerDue(bool force) {
 	if (force) return true;
     /* A completion response is waiting on durable storage; start draining on
      * this frame instead of waiting for the half-second coalescing delay. */
-    if (!c->state && c->respLen >= 8 && c->resp[0] == 0x68) return true;
+    if (completionPending(c)) return true;
 	if (c->writeSeq != walkerSeenSeq) {
 		walkerSeenSeq = c->writeSeq;
 		walkerIdleFrames = 0;
@@ -49,6 +54,10 @@ void walkerWrite(bool force) {
 		walkerOpened = true;
 	}
 	const u32 seq = c->writeSeq;
+	/* Pacing one sector per VBlank only helps mid-transfer. Once the game is
+	 * waiting on the final acknowledgement every frame of delay widens the
+	 * window in which HGSS can give up on a return, so drain it all now. */
+	const bool drain = force || completionPending(c);
 	for (u32 i = 0; i < WALKER_SECTORS; i++) {
 		if (!c->dirty[i]) continue;
 		/* Clear first: a sector changed again meanwhile is marked again and
@@ -68,7 +77,7 @@ void walkerWrite(bool force) {
          * that entire burst into one VBlank during the transfer animation.
          * Leave the rest due on the next frame, but forced reset/menu flushes
          * still drain everything before their caller proceeds. */
-        if(!force) {
+        if(!drain) {
             for(u32 pending=0;pending<WALKER_SECTORS;pending++) {
                 if(c->dirty[pending]) { walkerIdleFrames=WALKER_IDLE_FRAMES; return; }
             }

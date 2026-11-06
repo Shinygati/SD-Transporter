@@ -101,7 +101,6 @@ static int preserve(const char *walker,const unsigned char *data,const char *kin
 }
 
 int backupsPreserveActive(const char *walker,const unsigned char *data) {return preserve(walker,data,"deleted");}
-int backupsPreserveReward(const char *walker,const unsigned char *data) {return preserve(walker,data,"reward");}
 #include <errno.h>
 /* Explicit recovery for a missing final file; never invoked during normal load. */
 static const char *interruptedSuffixes[]={".tmp",".replace-old",".bak",".bak.tmp"};

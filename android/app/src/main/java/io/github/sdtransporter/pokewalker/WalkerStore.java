@@ -207,6 +207,9 @@ final class WalkerStore {
     }
     void save() throws IOException {
         if(visitBlocked)throw new IOException("A profile connection needs recovery. Reopen saved state before continuing.");
+        /* Same pre-save check as the consoles; refusal leaves the saved file untouched. */
+        if(data!=null&&(data.length!=65536||!Native.check(data)))
+            throw new IOException("Walker data check failed. Your last saved progress was kept.");
         try {
             writeVerified(file,encoded());error="";
         } catch(IOException ex) {

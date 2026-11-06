@@ -55,8 +55,4 @@ void uiNotify(UIState *, const char *, uint64_t);
 void uiUpdateClock(UIState *, uint64_t);
 void uiTop(const UIState *);
 void uiBottom(const UIState *);
-#ifdef UI_PREVIEW
-void uiPreviewOpen(const char *, int);
-void uiPreviewClose(void);
-#endif
 #endif

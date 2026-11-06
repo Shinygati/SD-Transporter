@@ -2,25 +2,14 @@
 #include "nds_ui.h"
 #include <stdlib.h>
 #include <string.h>
-#ifndef NDS_UI_PREVIEW
 #include <fat.h>
 #include <nds.h>
-#else
-#include <stdio.h>
-#endif
-#ifdef _MSC_VER
-__declspec(align(32)) static uint16_t frames[2][256 * 192];
-#else
 static uint16_t frames[2][256 * 192] __attribute__((aligned(32)));
-#endif
 static int current, storage, changed[2];
 static const uint8_t *fontPixels;
 static unsigned fontOffset, fontCount;
-#ifndef NDS_UI_PREVIEW
 static uint16_t *vram[2];
-#endif
 int ndsUiInit(void) {
-#ifndef NDS_UI_PREVIEW
   videoSetMode(MODE_5_2D);
   videoSetModeSub(MODE_5_2D);
   vramSetBankA(VRAM_A_MAIN_BG);
@@ -37,16 +26,6 @@ int ndsUiInit(void) {
   /* No write-back cache: direct_disc.c supplies the alignment adapter still
    * required by Calico when FatFs reads into unaligned or DTCM buffers. */
   storage = fatInit(0, true);
-#else
-  static uint8_t pixels[2048];
-  FILE *f = fopen(getenv("NDS_PREVIEW_FONT"), "rb");
-  if (!f)
-    return 0;
-  fontCount = fread(pixels, 8, 256, f);
-  fclose(f);
-  fontPixels = pixels;
-  storage = 1;
-#endif
   return fontPixels && fontCount;
 }
 int ndsStorageReady(void) { return storage; }
@@ -114,26 +93,11 @@ void ndsUiText(int x, int y, int scale, uint16_t color, const char *text,
   }
 }
 void ndsUiEnd(void) {
-#ifndef NDS_UI_PREVIEW
   swiWaitForVBlank();
   for (int i = 0; i < 2; i++)
     if (changed[i]) {
       DC_FlushRange(frames[i], sizeof(frames[i]));
       dmaCopy(frames[i], vram[i], sizeof(frames[i]));
     }
-#endif
   changed[0] = changed[1] = 0;
 }
-#ifdef NDS_UI_PREVIEW
-void ndsUiWrite(const char *path, int screen) {
-  FILE *f = fopen(path, "wb");
-  fprintf(f, "P6\n256 192\n255\n");
-  for (unsigned n = 0; n < 256 * 192; n++) {
-    uint16_t c = frames[screen][n];
-    fputc((c & 31) * 255 / 31, f);
-    fputc(((c >> 5) & 31) * 255 / 31, f);
-    fputc(((c >> 10) & 31) * 255 / 31, f);
-  }
-  fclose(f);
-}
-#endif

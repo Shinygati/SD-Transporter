@@ -361,6 +361,90 @@ static void endWalk(WalkerControl *c) {
 	eeFill(c, EE_STROLL_CLOCK, 0xFF, 10);
 }
 
+/* ---- HGSS empty-move PP fix ------------------------------------------------ */
+
+/* Overlay 112 builds every Pokemon it receives from a walker (caught slots and
+ * a joined partner) in ov112_021EE9E4: CreateMon() fills the level-up moveset
+ * with full PP, then the walker's move IDs are written with SetMonData(MOVE1+i)
+ * only. RestoreBoxMonPP() later heals non-empty slots, so a slot the walker
+ * leaves empty keeps the PP of the default move it replaced ("no move, 20 PP").
+ * While overlay 112 is resident (it runs the IR session), rewrite those four
+ * calls in place as a loop that also clears PP for empty slots:
+ *     add r4,#4 ; mov r6,#MOVE1
+ * L:  SetMonData(r5, r6, r4)
+ *     if (*(u16 *)r4 == 0) SetMonData(r5, r6 + 4, r4)   ; MOVEn_PP <- 0
+ *     add r4,#2 ; add r6,#1 ; cmp r6,#MOVE1+4 ; blt L
+ * r4/r6 are callee-saved and unused afterwards; the trailing form call is kept.
+ * The original is matched exactly (all five calls must reach one SetMonData,
+ * preceded by CreateMon's "mov r3,#0x20"); zero or several matches change
+ * nothing. Retail glitch slots are legal either way; cleared PP is the normal
+ * value for an empty slot. */
+#define PP_SCAN_START 0x021C0000u
+#define PP_SCAN_END   0x02260000u
+
+static u32 thumbBlTarget(const volatile u16 *h, u32 addr) {
+	if ((h[0] & 0xF800) != 0xF000 || (h[1] & 0xF800) != 0xF800) return 0;
+	u32 off = ((u32)(h[0] & 0x7FF) << 12) | ((u32)(h[1] & 0x7FF) << 1);
+	if (off & 0x400000u) off -= 0x800000u;
+	return addr + 4 + off;
+}
+
+static void thumbBl(volatile u16 *h, u32 addr, u32 target) {
+	const u32 off = target - (addr + 4);
+	h[0] = 0xF000 | ((off >> 12) & 0x7FF);
+	h[1] = 0xF800 | ((off >> 1) & 0x7FF);
+}
+
+static u32 ppSite(const volatile u16 *h, u32 a) {
+	if (h[0] != 0x1C28 || h[1] != 0x2136 || h[2] != 0x1D22 || h[-3] != 0x2320 ||
+	    h[5] != 0x1C28 || h[6] != 0x2137 || h[7] != 0x1DA2 ||
+	    h[10] != 0x1C22 || h[11] != 0x1C28 || h[12] != 0x2138 || h[13] != 0x3208 ||
+	    h[16] != 0x340A || h[17] != 0x1C28 || h[18] != 0x2139 || h[19] != 0x1C22 ||
+	    h[22] != 0x1C28 || h[23] != 0x2170 || h[24] != 0xAA04 ||
+	    h[27] != 0xB005 || h[28] != 0xBDF0) return 0;
+	const u32 setMonData = thumbBlTarget(h + 3, a + 6);
+	if (!setMonData || thumbBlTarget(h + 8, a + 16) != setMonData ||
+	    thumbBlTarget(h + 14, a + 28) != setMonData ||
+	    thumbBlTarget(h + 20, a + 40) != setMonData ||
+	    thumbBlTarget(h + 25, a + 50) != setMonData) return 0;
+	return setMonData;
+}
+
+static void fixEmptyMovePP(void) {
+	u32 found = 0, setMonData = 0;
+	for (u32 a = PP_SCAN_START + 6; a + 64 < PP_SCAN_END; a += 2) {
+		const volatile u16 *h = (const volatile u16 *)a;
+		if (h[0] != 0x1C28 || h[1] != 0x2136) continue;
+		const u32 t = ppSite(h, a);
+		if (!t) continue;
+		if (found) return; /* ambiguous */
+		found = a;
+		setMonData = t;
+	}
+	if (!found) return; /* not loaded, unknown build, or already patched */
+	volatile u16 *h = (volatile u16 *)found;
+	h[0] = 0x3404;  /* add r4, #4      */
+	h[1] = 0x2636;  /* mov r6, #MOVE1  */
+	h[2] = 0x1C28;  /* add r0, r5, #0  */
+	h[3] = 0x1C31;  /* add r1, r6, #0  */
+	h[4] = 0x1C22;  /* add r2, r4, #0  */
+	thumbBl(h + 5, found + 10, setMonData);
+	h[7] = 0x8820;  /* ldrh r0, [r4]   */
+	h[8] = 0x2800;  /* cmp r0, #0      */
+	h[9] = 0xD104;  /* bne next        */
+	h[10] = 0x1C28; /* add r0, r5, #0  */
+	h[11] = 0x1D31; /* add r1, r6, #4  */
+	h[12] = 0x1C22; /* add r2, r4, #0  */
+	thumbBl(h + 13, found + 26, setMonData);
+	h[15] = 0x3402; /* next: add r4,#2 */
+	h[16] = 0x3601; /* add r6, #1      */
+	h[17] = 0x2E3A; /* cmp r6, #MOVE1+4 */
+	h[18] = 0xDBEE; /* blt loop        */
+	h[19] = 0x46C0; h[20] = 0x46C0; h[21] = 0x46C0; /* nop */
+	/* The stub restores the MPU and caches after we return: drop stale code. */
+	__asm__ volatile("mcr p15, 0, %0, c7, c5, 0" :: "r"(0) : "memory");
+}
+
 /* ---- Requests ----------------------------------------------------------- */
 
 static void request(WalkerControl *c, u32 len) {
@@ -385,7 +469,20 @@ static void request(WalkerControl *c, u32 len) {
 		answer(c, CMD_SLAVE_ACK, EXTRA_TO_WALKER, 0, 1);
 		return;
 	}
-	if (c->state != 1) return; /* not linked: ignore stray packets */
+	if (c->state != 1) {
+		/* CONNECT_COMPLETE already dropped the link to idle, and its 0x68 is
+		 * withheld until the EEPROM is verified on SD. If HGSS times out and
+		 * resends 0x66 meanwhile, the write path has just cleared the pending
+		 * answer; dropping the retry too means HGSS never sees completion
+		 * after a return already removed the Pokemon from the walker. Re-queue
+		 * the acknowledgement for the same session instead. */
+		if (cmd != CMD_CONNECT_COMPLETE) return; /* not linked: ignore stray packets */
+		for (u32 i = 0; i < 4; i++) {
+			if (p[4 + i] != c->session[i]) { c->badPackets++; return; }
+		}
+		answer(c, CMD_CONNECT_COMPLETE_ACK, EXTRA_FROM_WALKER, 0, 0);
+		return;
+	}
 	for (u32 i = 0; i < 4; i++) {
 		if (p[4 + i] != c->session[i]) { c->badPackets++; return; }
 	}
@@ -513,6 +610,10 @@ u32 walkerEntry(WalkerControl *c, u32 op, u32 a, u32 b) {
 		return 0;
 	}
 	if (op == WALKER_OP_INIT) {
+		/* Overlay 112 is resident for the whole IR session and builds the
+		 * received Pokemon afterwards; it is reloaded each time, so patch on
+		 * every session start. */
+		fixEmptyMovePP();
 		/* A new session: whatever happened to the last one, start over,
 		 * and wait for SELECT again. */
 		c->state = 0;

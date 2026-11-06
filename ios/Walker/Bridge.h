@@ -16,4 +16,6 @@ int pw_command(uint8_t *data, int op, int arg, uint32_t now);
 void pw_encounter(uint8_t *data, int values[3]);
 void pw_battle(uint8_t *data, int values[7], int action);
 uint32_t pw_crc(const uint8_t *data, unsigned length);
+/* Repair mirrored records in place, then 1 if the walker is safe to save. */
+int pw_check(uint8_t *data);
 #endif

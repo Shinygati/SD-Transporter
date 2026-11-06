@@ -47,7 +47,9 @@ int cartWalkerPoll(int force){
    }
    store->crc[n]=cartCrc(data,512);
   }
-  if(!force)break;
+  /* Only reached with HGSS waiting on 0x68 (or a forced flush): drain every
+   * dirty sector now instead of one per VBlank, so the game cannot time out
+   * on a return whose Pokemon has already left the walker image. */
  }
  for(unsigned n=0;n<WALKER_SECTORS;n++)if(c->dirty[n]){busy=0;return 0;}
  c->flushedSeq=seq;c->flushes++;store->error=0;busy=0;return 1;
