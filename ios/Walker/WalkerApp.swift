@@ -67,18 +67,19 @@ struct WalkerHome: View {
     @State private var classicPresented = false
     @State private var startClassicOnly = true
     @State private var classicFirstButton: Int32 = -1
+    @State private var classicActivity = -1
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("iPhone Pokewalker").font(.largeTitle.bold())
                     WalkerPicture(data: model.state.returnPending || model.state.revoked ? nil : model.state.data).frame(height: 300)
-                        .contentShape(Rectangle()).onTapGesture { if model.usable { startClassicOnly=true;classicFirstButton = -1;classicPresented = true } }
+                        .contentShape(Rectangle()).onTapGesture { if model.usable { startClassicOnly=true;classicFirstButton = -1;classicActivity = -1;classicPresented = true } }
                         .accessibilityAddTraits(.isButton).accessibilityLabel("Pokewalker. Open original-style controls")
                     HStack {
                         ForEach(0..<3) { key in
                             Button(key==0 ? "◀":key==1 ? "●":"▶") {
-                                startClassicOnly=false;classicFirstButton=Int32(key);classicPresented=true
+                                startClassicOnly=false;classicFirstButton=Int32(key);classicActivity = -1;classicPresented=true
                             }.disabled(!model.usable)
                         }
                     }
@@ -95,8 +96,12 @@ struct WalkerHome: View {
                     WalkerDetailsView()
                     NavigationLink("Walker profiles · \(model.profileName)", icon:6) { ProfilesView() }.disabled(model.busy)
                     if model.active && !model.state.returnPending {
-                        NavigationLink(model.info[11] > 0 ? "Wild visitor · free battle" : "Poké Radar · 10 watts") { RadarView() }.disabled(!model.usable || model.info[1] == 0)
-                        NavigationLink("Dowsing · 3 watts", icon:2) { DowsingView() }.disabled(!model.usable || model.info[1] == 0)
+                        Button { startClassicOnly=true;classicFirstButton = -1;classicActivity=0;classicPresented=true } label: {
+                            WalkerMenuLabel(title:model.info[11] > 0 ? "Wild visitor · free battle" : "Poké Radar · 10 watts",icon:0)
+                        }.disabled(!model.usable || model.info[1] == 0)
+                        Button { startClassicOnly=true;classicFirstButton = -1;classicActivity=1;classicPresented=true } label: {
+                            WalkerMenuLabel(title:"Dowsing · 3 watts",icon:2)
+                        }.disabled(!model.usable || model.info[1] == 0)
                         NavigationLink("Your pack", icon:3) { PackView() }.disabled(!model.usable)
                         NavigationLink("Trainer card", icon:4) { TrainerView() }.disabled(!model.usable)
                     }
@@ -108,7 +113,7 @@ struct WalkerHome: View {
                 }.padding()
             }.background(WalkerTheme.background).buttonStyle(WalkerButton()).tint(WalkerTheme.mint)
         }
-        .sheet(isPresented: $classicPresented) { ClassicWalkerView(initiallyClassic:startClassicOnly,initialButton:classicFirstButton).environmentObject(model) }
+        .sheet(isPresented: $classicPresented) { ClassicWalkerView(initiallyClassic:startClassicOnly,initialButton:classicFirstButton,initialActivity:classicActivity).environmentObject(model) }
         .onReceive(clock) { _ in model.tick(); ticks += 1; if ticks % 30 == 0 { model.refreshMotion() } }
     }
 }
@@ -425,6 +430,7 @@ struct ClassicWalkerView: View {
     private var menuHoldSeconds: Double { Double([250,500,1000,1500,2000,3000].contains(menuHoldMilliseconds) ? menuHoldMilliseconds:1000)/1000 }
     var initiallyClassic = true
     var initialButton: Int32 = -1
+    var initialActivity = -1
     @State private var classicOnly = true
     @EnvironmentObject var model: WalkerModel
     @Environment(\.dismiss) private var dismiss
@@ -459,7 +465,13 @@ struct ClassicWalkerView: View {
                 .sheet(isPresented:$showPeers) { NavigationStack { ConnectionChoiceView() }.environmentObject(model) }
                 .sheet(isPresented:$showConsole) { NavigationStack { SyncView() }.environmentObject(model) }
         }
-        .onAppear { if !initialized { initialized=true;classicOnly=initiallyClassic;profile=model.selectedProfileID;values[19]=Int32(model.state.classicVolume ?? 2);values[20]=Int32(model.state.classicContrast ?? 1);press(initialButton) } }
+        .onAppear { if !initialized { initialized=true;classicOnly=initiallyClassic;profile=model.selectedProfileID;values[19]=Int32(model.state.classicVolume ?? 2);values[20]=Int32(model.state.classicContrast ?? 1);if initialActivity >= 0 {
+                // Use the shared classic engine for both mini-games. The menu engine
+                // spends watts and chooses rewards; the launcher must not do either.
+                press(2) // HOME -> MENU, Radar selected
+                if initialActivity == 1 { press(2) } // Select Dowsing
+                press(1) // Confirm
+            } else { press(initialButton) } } }
         .onReceive(clock) { _ in if !showPeers && !showConsole { press(-1) } }
         .onDisappear { audio.stop() }
     }
