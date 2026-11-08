@@ -230,23 +230,3 @@ Phone sync remains available when the console has no walker files. From the file
 
 Deleting a phone profile's active Pokémon clears its trainer-name/public-ID pairing. The next receive can bind that empty profile to another trainer. An ordinary successful return keeps the pairing. Recovery copies remain separate and do not appear as active Pokémon.
 
-## v1.6.2 update
-
-- **"This Pokéwalker has not been registered":** when HGSS pairs a walker it first resets it, which clears the registration, then writes your trainer details. If the link is cut between those two steps, the walker is left unregistered. At launch, if the save has no Pokémon out and the walker has lost its registration, the bootstrap now puts back the newest copy registered to the same trainer (`<walker>.lastgood`, or the newest prelaunch snapshot), keeping steps and watts and ending any leftover stroll. A walker wiped on purpose, or a `.walker` file you deleted, is recognised (still erased) and left as a new walker. Noted in `_nds/nds-bootstrap/pokewalker-repair.txt`.
-- **SELECT + LEFT now needs a deliberate hold:** both buttons must be held for about two seconds on the search screen before the walker is wiped. A quick or accidental press does nothing, and it never works once a connection has started.
-
-## v1.6.1 update
-
-- **Lost walker Pokémon and "a Pokémon is already on the Pokéwalker" (DSi/3DS):** since v1.5.1 the walker held back its final "connection complete" reply until every change was verified on the SD card. On a slower card that could outlast HGSS's timeout, so the game abandoned a return the walker had already applied: the Pokémon was in neither place, and the game's save still said it was out on the walker. The walker now replies straight away, writes everything as soon as the session ends, and answers a resent completion. The real-cartridge launcher saves the same way.
-- **Holding SELECT through a transfer (all setups, including DS flashcarts):** the walker re-armed and advertised on the very first poll after a session ended if SELECT was still held, while HGSS was closing the link, so the game abandoned the send or return without saving. SELECT now only arms the walker on a fresh press after each link, and the walker stays silent for 120 polls after any session ends.
-- **Automatic walker repair at launch:** before HGSS starts, the bootstrap compares the walker with the save. A Pokémon the save says isn't out (left on the walker by an unfinished send, and still in the party or PC) is removed so sending works again; a walker that lost the Pokémon the save says is out is restored from `<walker>.lastgood` or the newest matching prelaunch snapshot. Same trainer only, never a phone-held walker, and older joined partners are left alone. Changes are noted in `_nds/nds-bootstrap/pokewalker-repair.txt`; the pre-repair walker stays in the prelaunch snapshot. ROM launches only.
-- **Real HGSS cartridge launcher:** fixed "Cannot verify the SD sector map". Raw SD reads went into stack buffers in ARM9 DTCM, which the ARM7 SD driver cannot reach; they now go through a main-RAM buffer.
-- **Empty move slot with PP:** HGSS's overlay 112 sets walker move IDs over the default moveset without fixing PP. While the walker session runs, the bootstrap patches that routine in RAM so empty slots get 0 PP. It only patches an exact, unique match.
-- **Illegal Pokémon:** removed the solo-join feature, which produced event-path Pokémon HGSS could not build legally.
-- **Data checks:** before every save, the NDS, 3DS, Android and iPhone companions repair a damaged mirrored-record copy from the good one and refuse to save malformed walker data (species, level, item, form, or moves: missing first move, gaps or repeats). Consoles apply the same check to phone returns. Caught Pokémon are only stored from well-formed course data.
-- Removed unused code: the UI preview build hooks and unused helpers.
-- Release build: removed the DS-flashcart walker diagnostics (forced nds-bootstrap logging and `pokewalker-status.txt`). `pokewalker-error.txt` still explains why a walker did not connect.
-
-## v1.5.1 update
-
-The rebuilt bootstrap spreads background EEPROM writes across frames and holds the final session-completion acknowledgement until verified write-back has completed. Source, binaries and build records are included. These safeguards address a specific RAM-to-disk completion window; they do not establish the cause of every reported lost Pokemon. See [the bootstrap build record](bootstrap/BUILD.md).
