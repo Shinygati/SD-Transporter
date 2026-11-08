@@ -159,3 +159,7 @@ xcuserdata/
 /.local-signing/
 
 /TWiLightMenu-27.25.1/slot1launch/build-cartwalker/
+
+# build-all.sh output and its TWiLight Menu++ download cache.
+out/
+.release-cache/

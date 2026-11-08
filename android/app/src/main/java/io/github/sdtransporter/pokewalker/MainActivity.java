@@ -308,7 +308,7 @@ public final class MainActivity extends Activity {
     }
     private String menuHoldLabel(int milliseconds){return milliseconds==250?"0.25 seconds":milliseconds==500?"0.5 seconds":milliseconds==1000?"1 second":milliseconds==1500?"1.5 seconds":(milliseconds/1000)+" seconds";}
     private void settings(){
-        generation++;page="settings";heading("Settings");note("Build 1.5");
+        generation++;page="settings";heading("Settings");
         button("Menu button hold: "+menuHoldLabel(menuHoldMillis()),()->{
             final int[] durations={250,500,1000,1500,2000,3000};String[] labels=new String[durations.length];int checked=0;
             for(int n=0;n<durations.length;n++){labels[n]=menuHoldLabel(durations[n]);if(durations[n]==menuHoldMillis())checked=n;}

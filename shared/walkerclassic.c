@@ -179,7 +179,14 @@ void walkerClassicFrame(const uint8_t *ee,const int32_t s[40],uint8_t out[6144],
         if(s[REPLACE] && s[SEL]==3)label(out,"LEAVE NEW FIND",3,25);
         else {
             int index=s[SEL],pokemon=s[REPLACE]?s[REPLACE]==1:index<3;
-            unsigned id=pokemon?walkerPokemonId(ee,index%3):index<6?walkerItemId(ee,index-3):index<16?(ee[0xcec8+(index-6)*4]|ee[0xcec9+(index-6)*4]<<8):0;
+            /* Replacing: SEL is the slot itself (0-2) for Pokemon and items alike.
+             * Browsing: 0-2 Pokemon, 3-5 items, 6-15 friend gifts. */
+            unsigned id;
+            if(pokemon)id=walkerPokemonId(ee,index%3);
+            else if(s[REPLACE])id=walkerItemId(ee,index);
+            else if(index<6)id=walkerItemId(ee,index-3);
+            else if(index<16)id=ee[0xcec8+(index-6)*4]|ee[0xcec9+(index-6)*4]<<8;
+            else id=0;
             char value[22];snprintf(value,sizeof(value),"%s %d",pokemon?"POKEMON":"ITEM",index+1);label(out,value,0,17);
             const char *name=id?(pokemon?speciesName(id):itemName(id)):"EMPTY";
             snprintf(value,sizeof(value),"%.16s",name);label(out,value,0,31);

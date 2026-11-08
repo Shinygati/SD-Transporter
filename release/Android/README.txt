@@ -9,7 +9,7 @@ over Wi-Fi.
 Installing
 ----------
 
-1. Copy SD-Transporter-Pokewalker-1.6.2.apk to your phone, or download
+1. Copy SD-Transporter-Pokewalker-1.6.3.apk to your phone, or download
    it on the phone directly.
 2. Open it. If Android asks, allow your browser or file manager to
    "install unknown apps". That's normal for apps that don't come from

@@ -32,7 +32,7 @@ has been verified. This is not yet established as working on either console.
 
 ### If it stops after pressing Launch
 
-Since v1.6.2 the launcher:
+Since v1.6.3 the launcher:
 
 - always turns on the card engine (the walker runs inside it), ignoring
   TWiLight's "hold A" shortcut that turns it off;

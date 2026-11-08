@@ -1,9 +1,5 @@
 SD TRANSPORTER - POKEWALKER COMPANION USER GUIDE
-<<<<<<< HEAD
-Version 1.6.2 - Updated: 6 November 2026
-=======
-Version 1.6.1 - Updated: 6 November 2026
->>>>>>> 417c057872a21b379f6e2e2607f6621a47b6c098
+Version 1.6.3 - Updated: 9 November 2026
 
 This guide covers the 3DS, NDS and Android companions and the iPhone source
 port. The phone apps use the same walker progress and activities. The iPhone
@@ -23,20 +19,12 @@ are not overwritten. Back up the card first.
 
 3DS:
 - Run 3ds/pokewalker3ds/pokewalker3ds.3dsx from the Homebrew Launcher.
-<<<<<<< HEAD
-  A CIA for the companion is not included in 1.6.2.
-=======
-  A CIA for the companion is not included in 1.6.1.
->>>>>>> 417c057872a21b379f6e2e2607f6621a47b6c098
+  A CIA for the companion is not included in 1.6.3.
 NDS / DS Lite / DSi (and 3DS in DS mode):
 - Launch roms/nds/Pokewalker-NDS.nds from TWiLight Menu++, with working
   SD/DLDI access.
 Android:
-<<<<<<< HEAD
-- Install the signed 1.6.2 APK over the existing app. Keeping the installed
-=======
-- Install the signed 1.6.1 APK over the existing app. Keeping the installed
->>>>>>> 417c057872a21b379f6e2e2607f6621a47b6c098
+- Install the signed 1.6.3 APK over the existing app. Keeping the installed
   app's data preserves the active walker, saved consoles and handoff records.
   Never uninstall the app while it holds your Pokemon.
 
@@ -49,7 +37,6 @@ In TWiLight Menu++, highlight HeartGold or SoulSilver and press Y. Set
 Bootstrap: to Nightly, then highlight "Virtual Pokewalker: Off" and press A so
 it reads "Virtual Pokewalker: On". Launch the game as normal.
 Use HGSS's normal Pokewalker menu to register the walker and send a Pokemon
-<<<<<<< HEAD
 on a stroll. The virtual connection is triggered by pressing SELECT on the
 normal Pokewalker connection/search screen. SELECT is the walker's button,
 like the button on a real Pokewalker: press it once, don't hold it. Each
@@ -62,25 +49,12 @@ unregistered one, the same as deleting the .walker file: trainer registration,
 partner, caught Pokemon, items, watts and step history are all cleared. A quick
 or accidental press of both does nothing. It only works on the search screen,
 before the connection starts, never during normal play or a transfer. Use it only
-=======
-on a stroll. The virtual connection is triggered by holding SELECT on the
-normal Pokewalker connection/search screen. SELECT is the walker's button.
-
-SELECT + LEFT RESETS THE WALKER. Pressing SELECT and LEFT together while HGSS
-is searching wipes the virtual walker back to a brand-new, unregistered one,
-the same as deleting the .walker file: trainer registration, partner, caught
-Pokemon, items, watts and step history are all cleared. It triggers once per
-press and only on the search screen, never during normal play. Use it only
->>>>>>> 417c057872a21b379f6e2e2607f6621a47b6c098
 when you deliberately want a fresh walker (for example, one registered to a
 different save that HGSS refuses). If you press it by accident, stop, and
 restore the newest "prelaunch" snapshot from before the wipe using Recovery
 (section 8). A prelaunch snapshot is saved automatically before every launch.
-<<<<<<< HEAD
 If a Pokemon was out on a stroll when you wiped it, just restart the game: the
 automatic repair (section 7) puts the walker back.
-=======
->>>>>>> 417c057872a21b379f6e2e2607f6621a47b6c098
 
 Real HGSS cartridges (DSi/3DS in DSi mode with console SD access):
 Launch roms/nds/Virtual-Pokewalker-Cartridge.nds, insert the cartridge when
@@ -212,7 +186,6 @@ Pokewalker menu to return from the stroll or receive supported gifts/rewards.
 Keep each walker paired with the HGSS save that created its registration.
 Recovery does not merge separate Pokemon, trainers or newly reset strolls.
 
-<<<<<<< HEAD
 The walker saves its changes to the card as soon as the connection ends, while
 HGSS is saving the game. Let HGSS finish saving before you reset or turn the
 console off.
@@ -236,11 +209,6 @@ only the launcher uses it. Any repair is described in
 _nds/nds-bootstrap/pokewalker-repair.txt, and the walker as it was before the
 repair stays in transfers/backups. The real-cartridge launcher cannot read the
 cartridge save first, so it does not repair automatically.
-=======
-At the end of a connection the walker writes its changes to the card before
-HGSS shows that the connection is complete, so a short pause there is normal.
-Let it finish and let HGSS save; don't reset or turn the console off.
->>>>>>> 417c057872a21b379f6e2e2607f6621a47b6c098
 
 8. BACKUPS AND DELETION
 
