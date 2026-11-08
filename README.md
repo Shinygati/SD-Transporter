@@ -246,7 +246,3 @@ Deleting a phone profile's active Pokémon clears its trainer-name/public-ID pai
 - **Data checks:** before every save, the NDS, 3DS, Android and iPhone companions repair a damaged mirrored-record copy from the good one and refuse to save malformed walker data (species, level, item, form, or moves: missing first move, gaps or repeats). Consoles apply the same check to phone returns. Caught Pokémon are only stored from well-formed course data.
 - Removed unused code: the UI preview build hooks and unused helpers.
 - Release build: removed the DS-flashcart walker diagnostics (forced nds-bootstrap logging and `pokewalker-status.txt`). `pokewalker-error.txt` still explains why a walker did not connect.
-
-## v1.5.1 update
-
-The rebuilt bootstrap spreads background EEPROM writes across frames and holds the final session-completion acknowledgement until verified write-back has completed. Source, binaries and build records are included. These safeguards address a specific RAM-to-disk completion window; they do not establish the cause of every reported lost Pokemon. See [the bootstrap build record](bootstrap/BUILD.md).
