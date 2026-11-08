@@ -81,7 +81,12 @@ int main(void) {
 #ifdef CARTWALKER
         if (isDSiMode() && fifoCheckValue32(FIFO_USER_01)) {
             fifoGetValue32(FIFO_USER_01);
-            if (REG_SCFG_MC == 0x10 || REG_SCFG_MC == 0x11)
+            /* A cartridge that is already running (read by TWiLight, or left
+             * over from an earlier attempt) won't answer the raw header read,
+             * so power-cycle it, as stock TWiLight does by default. */
+            if ((REG_SCFG_MC & 0x0C) == 0x08)
+                TWL_ResetSlot1();
+            else if (REG_SCFG_MC == 0x10 || REG_SCFG_MC == 0x11)
                 PowerOnSlot();
             fifoSendValue32(FIFO_USER_03, 1);
         }

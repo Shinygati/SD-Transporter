@@ -6,8 +6,21 @@
 #define CART_STAGE_BYTES 0x12000u
 #define CART_MAGIC 0x43574C4Bu
 #define CART_STAGE_IMAGE 0x1000u
-#define CART_BASE 0x023C0000u
-#define CART_STORAGE_OFF 0x10800u
+/* Memory layout in HGSS's 4 MiB main RAM. The loader's ARM9 page stays where
+ * TWiLight puts it (0x023DA000-0x023DAFFF); moving it to 0x023E0000 broke
+ * HGSS, which uses the memory above its 0x023E0000 heap ceiling. The walker
+ * is split around that page:
+ *   0x023CA000-0x023D9FFF  walker EEPROM image (64 KiB) - new heap ceiling
+ *   0x023DB000-0x023DB7FF  WalkerControl
+ *   0x023DB800-0x023DBFFF  CartStorage (SD sector map)
+ *   0x023DC000-...         protocol blob (ends below 0x023E0000)
+ * The heap ceiling ends up where the DS-flashcart walker puts it. */
+#define CART_EEPROM  0x023CA000u
+#define CART_CTRL    0x023DB000u
+#define CART_STORAGE (CART_CTRL+0x800u)
+#define CART_BLOB    (CART_CTRL+0x1000u)
+#define CART_END     0x023E0000u
+#define CART_BASE    CART_EEPROM /* lowest walker address and the new heap ceiling */
 typedef struct {
  uint32_t sector[128];
  uint32_t crc[128];

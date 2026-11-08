@@ -62,6 +62,12 @@
 #ifdef CARTWALKER
 #include "cartwalker.h"
 extern int cartWalkerInstall(const tNDSHeader *,const module_params_t *,unsigned *);
+extern unsigned cartWalkerFailReason;
+extern unsigned cartWalkerVerifyStage(void);
+/* Loader errors are drawn as two rows of 2-bit boxes. Small codes such as
+ * 0x03 draw nothing, so a failed launch looked like a hang. Bit 16 makes
+ * both rows appear; see README-CARTRIDGE.md for the colours. */
+#define CART_ERR(code) (0x00010000u | (code))
 extern void ensureBinaryDecompressed(const tNDSHeader *,module_params_t *);
 #endif
 
@@ -957,6 +963,11 @@ void arm7_main (void) {
 	// Get ARM7 to clear RAM
 	arm7_resetMemory();	
 
+#ifdef CARTWALKER
+	/* Slow checks first: HGSS must start soon after the cartridge is read. */
+	const unsigned cartStageError = cartWalkerVerifyStage();
+#endif
+
 	//debugOutput (ERR_STS_LOAD_BIN);
 
 	if (!twlMode) {
@@ -968,9 +979,11 @@ void arm7_main (void) {
 	// Load the NDS file
 	errorCode = arm7_loadBinary(dsiHeaderTemp);
 	if (errorCode) {
-		debugOutput(errorCode);
 #ifdef CARTWALKER
+		debugOutput(CART_ERR(errorCode));
         while (1);
+#else
+		debugOutput(errorCode);
 #endif
 	}
 
@@ -1088,6 +1101,13 @@ void arm7_main (void) {
 			}
 			else {
 				REG_SCFG_CLK = 0x0181;
+#ifdef CARTWALKER
+				/* Same DS-mode feature set as without SD access, plus only the
+				 * SD/MMC controller (bit 18) for the walker's write-back. Leaving
+				 * the launcher's full DSi feature set enabled stopped HGSS
+				 * loading the overworld (black screen after Continue). */
+				REG_SCFG_EXT = 0x93FBFB06 | BIT(18);
+#endif
 			}
 
 			// Used by ARM7 binaries to determine DSi mode...
@@ -1129,15 +1149,18 @@ void arm7_main (void) {
 #ifdef CARTWALKER
             ensureBinaryDecompressed(ndsHeader,moduleParams);
             if (!cartWalkerInstall(ndsHeader,moduleParams,(unsigned *)ENGINE_LOCATION_ARM7)) {
-                debugOutput(ERR_STS_HOOK_BIN);
+                if (cartStageError) cartWalkerFailReason = cartStageError;
+                debugOutput(CART_ERR((cartWalkerFailReason << 8) | ERR_STS_HOOK_BIN));
                 while (1);
             }
 #endif
 		} else {
 			nocashMessage("error during card hook");
-			debugOutput(errorCode);
 #ifdef CARTWALKER
+			debugOutput(CART_ERR(errorCode));
             while (1);
+#else
+			debugOutput(errorCode);
 #endif
 		}
 		if (*(u32*)(0x023F0000) != 0xCF000000) {

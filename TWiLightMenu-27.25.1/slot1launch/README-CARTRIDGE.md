@@ -30,6 +30,45 @@ has been verified. This is not yet established as working on either console.
    communication and the game's normal save, use the existing NDS/3DS/phone
    companion workflow with the same `.walker` file.
 
+### If it stops after pressing Launch
+
+Since v1.6.2 the launcher:
+
+- always turns on the card engine (the walker runs inside it), ignoring
+  TWiLight's "hold A" shortcut that turns it off;
+- keeps the loader's own ARM9 page where TWiLight puts it (0x023DA000) and
+  places the walker around it: the 64 KiB walker image at 0x023CA000 and the
+  control block, sector map and protocol code at 0x023DB000. HGSS's heap
+  ceiling drops from 0x023E0000 to 0x023CA000, the same as the DS-flashcart
+  walker. Moving the loader page to 0x023E0000 broke HGSS, which uses that
+  memory;
+- sets up the DSi hardware exactly like a normal Slot-1 launch, plus only the
+  SD/MMC controller for the walker's write-back, with SCFG locked. Leaving the
+  launcher's full DSi feature set enabled let HGSS reach the title screen but
+  gave a black screen when loading the overworld.
+
+A **white screen** means HGSS started and then stopped. A **black screen with
+coloured boxes** means the loader refused to start the game. On a 3DS the
+boxes are on the bottom screen and only the blue ones are easy to see. Read
+the 8 boxes in the lower row from left to right, two bits each:
+red = 0, yellow = 1, green = 2, blue = 3.
+
+| Lower row | Meaning |
+| --- | --- |
+| `R R R Y R R R B` | 1: no staged walker, or the cartridge header didn't match |
+| `R R R G R R R B` | 2: unexpected HGSS memory layout |
+| `R R R B R R R B` | 3: IR receive routine not found, or found twice |
+| `R R Y R R R R B` | 4: SDK heap ceiling not found, or found twice |
+| `R R Y Y R R R B` | 5: IR send/status routines not found |
+| `R R Y G R R R B` | 6: IR session-start routine not found, or found twice |
+| `R R Y B R R R B` | 7: the staged walker was missing when the loader started |
+| `R R G Y R R R B` | 9: the game's ARM7 code sits where the walker would go |
+| `R R R R R Y R Y` or other | a cartridge load or card-engine hook error from the TWiLight loader |
+
+The upper row is always `R R R R R R R Y`. Note the pattern, the game's language
+and region, and the console, and report it. The cartridge and its save
+have not been touched.
+
 Files are created at:
 
 ```text

@@ -239,10 +239,14 @@ int main() {
 #endif
 			language = settingsini.GetInt("NDS-BOOTSTRAP", "LANGUAGE", -1);
 
+#ifndef CARTWALKER
+			/* Holding A turns the card engine off. The cartridge walker needs
+			 * the engine, and A is the button used to reach this point. */
 			scanKeys();
 			if (keysHeld() & KEY_A) {
 				runCardEngine = !runCardEngine;
 			}
+#endif
 
 		}
 #ifndef CARTWALKER
@@ -325,10 +329,26 @@ int main() {
 #endif
             break;
         } else {
+#ifdef CARTWALKER
+            /* The walker lives in the card engine, so turn it on before the
+             * cheat block. Otherwise the 0xCF000000 "no cheats" marker is never
+             * written and the loader copies whatever is at 0x023F0000 into the
+             * engine as cheat codes, which can crash HGSS at boot (white screen). */
+            runCardEngine = true;
+            /* SD access for the walker's write-back. SCFG stays locked as in a
+             * normal Slot-1 launch: leaving it unlocked, with the launcher's
+             * full DSi feature set, gave a black screen loading the overworld. */
+            EnableSD = true;
+#endif
 			if (runCardEngine) {
 				cheatData[3] = 0xCF;
+#ifdef CARTWALKER
+				/* Never apply a widescreen cheat file left over from another game. */
+				off_t wideCheatSize = 0;
+#else
 				off_t wideCheatSize = getFileSize("sd:/_nds/nds-bootstrap/wideCheatData.bin");
-				if (wideCheatSize > 0) {
+#endif
+				if (wideCheatSize > 0 && wideCheatSize <= (off_t)sizeof(cheatData) - 8) {
 					FILE* wideCheatFile = fopen("sd:/_nds/nds-bootstrap/wideCheatData.bin", "rb");
 					fread(cheatData, 1, wideCheatSize, wideCheatFile);
 					fclose(wideCheatFile);
@@ -348,9 +368,6 @@ int main() {
                 iprintf("\nLaunch stopped. No cartridge patch applied.\n");
                 while (1) swiWaitForVBlank();
             }
-            runCardEngine = true;
-            EnableSD = true;
-            scfgUnlock = true;
 #endif
 			runLaunchEngine ((memcmp(gameCode, "UBRP", 4) == 0 || memcmp(gameCode, "AMFE", 4) == 0 || memcmp(gameCode, "ALXX", 4) == 0 || memcmp(ndsHeader.header.gameTitle, "D!S!XTREME", 10) == 0), (memcmp(gameCode, "UBRP", 4) == 0));
 		}

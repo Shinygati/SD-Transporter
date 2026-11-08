@@ -11,13 +11,13 @@ static int busy;
 int cartWalkerPoll(int force){
  WalkerControl *c=(WalkerControl *)cartwalker_control;
  if(!c)return 1;
- if((unsigned)c!=CART_BASE+WALKER_CONTROL_OFF||c->magic!=WALKER_MAGIC||c->version!=WALKER_VERSION)return 0;
+ if((unsigned)c!=CART_CTRL||c->magic!=WALKER_MAGIC||c->version!=WALKER_VERSION)return 0;
  if(c->writeSeq==c->flushedSeq)return 1;
  if(busy)return 0;
  /* Write once the IR session is over (state 0), or when forced. */
  if(!force && c->state)return 0;
  busy=1;
- CartStorage *store=(CartStorage *)(CART_BASE+CART_STORAGE_OFF);
+ CartStorage *store=(CartStorage *)CART_STORAGE;
  if(store->mapCrc!=cartMapSignature(store))goto failed;
  if(!store->initialized){
   sdmmc_init();
