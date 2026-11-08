@@ -9,8 +9,8 @@
 # the NDS and 3DS companion apps and the three modified TWiLight Menu++ themes,
 # then lays everything out per setup in out/SD-Transporter-v<version>/ and zips
 # it. The official TWiLight Menu++ packages are downloaded once into
-# .release-cache/. The signed Android APK is built too when gradle, the
-# Android SDK and the four signing variables are set (see the end).
+# .release-cache/. The signed Android APK is built too when the Android SDK
+# (ANDROID_HOME) and your keystore are available (see the end).
 #
 # Needs in WSL: docker, python3, curl, zip and 7z
 #   sudo apt install p7zip-full zip
@@ -158,7 +158,6 @@ if [ -z "${ANDROID_KEYSTORE_PATH:-}" ] && [ -f "$SIGNING_DIR/Pokewalker-Android.
   unset signing_password
 fi
 android_missing=""
-command -v gradle >/dev/null || android_missing="$android_missing gradle"
 [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || android_missing="$android_missing ANDROID_HOME"
 for v in ANDROID_KEYSTORE_PATH ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
   [ -n "${!v:-}" ] || android_missing="$android_missing $v"
@@ -167,7 +166,8 @@ if [ -z "$android_missing" ]; then
   echo "== Android app (signed release)"
   [ -f "$ANDROID_KEYSTORE_PATH" ] || { echo "Keystore not found: $ANDROID_KEYSTORE_PATH"; exit 1; }
   rm -f "$ROOT/android/app/build/outputs/apk/release/app-release.apk"
-  (cd "$ROOT/android" && gradle --no-daemon -q assembleRelease)
+  chmod +x "$ROOT/android/gradlew"; sed -i 's/\r$//' "$ROOT/android/gradlew"
+  (cd "$ROOT/android" && ./gradlew --no-daemon -q assembleRelease)
   apksigner=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
   if [ -n "$apksigner" ]; then
     echo "   signed with:"; "$apksigner" verify --print-certs "$ROOT/android/app/build/outputs/apk/release/app-release.apk" 2>/dev/null \
@@ -193,9 +193,9 @@ echo "  $REL"
 echo "  $REL.zip"
 [ -z "$android_missing" ] || cat <<'EOF'
 
-The Android app was not built here. Either set ANDROID_HOME, install gradle
-and export ANDROID_KEYSTORE_PATH, ANDROID_STORE_PASSWORD, ANDROID_KEY_ALIAS
-and ANDROID_KEY_PASSWORD before running this script, or build it in Android
+The Android app was not built here. Either set ANDROID_HOME (and keep your
+keystore folder in place, or export the four ANDROID_* signing variables)
+before running this script, or build it in Android
 Studio (Build > Generate Signed App Bundle or APK > APK, your existing
 Pokewalker-Android.jks, alias "pokewalker", release) and run the script again.
 Always sign with that same keystore so phones accept the update.
