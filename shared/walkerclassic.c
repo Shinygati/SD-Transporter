@@ -13,6 +13,13 @@
 enum { HOME,MENU,RADAR,DOWSE,BATTLE,PACK,TRAINER,SETTINGS,CONNECT,RESULT,PEERS };
 enum { VIEW,SEL,SUB,CHOICE,TARGET,ROUND,TRIES,EMPTY,DEADLINE,RESULT_ID,SOUND,BAT,
        B1,B2,B3,B4,B5,B6,REPLACE,VOLUME,CONTRAST,ANIM,PREV_HP,PREV_ENEMY,LAST_ACTION };
+/* Item names for the 16-character LCD: a TM/HM name that is too long drops
+ * its "TM59 " prefix so the move name stays readable. */
+static const char *lcdItem(unsigned id){
+    const char *name=itemName(id);
+    if(strlen(name)>16 && (name[0]=='T'||name[0]=='H') && name[1]=='M' && name[4]==' ')return name+5;
+    return name;
+}
 static unsigned rnd(uint8_t *ee,unsigned n){return (walkerRandom(ee)>>3)%n;}
 static void result(int32_t *s,int value,int score){s[VIEW]=RESULT;s[RESULT_ID]=value;s[SOUND]=score+1;}
 static void battleStart(int32_t *s,uint32_t ms){
@@ -24,7 +31,7 @@ static void battleStart(int32_t *s,uint32_t ms){
 static void storeReward(uint8_t *ee,int32_t *s,int slot,uint32_t now){
     int item=s[REPLACE]==2;
     int ok=item?walkerStoreItem(ee,s[CHOICE],slot,now):walkerStorePokemon(ee,s[CHOICE],slot,now);
-    if(ok<0){s[VIEW]=PACK;s[SEL]=0;s[SOUND]=2;}
+    if(ok<0){s[VIEW]=PACK;s[SEL]=0;s[SUB]=1;s[SOUND]=2;} /* SUB=1: show the find before asking */
     else {s[REPLACE]=0;result(s,ok?item?2:1:3,ok?5:4);}
 }
 int walkerClassicInput(uint8_t *ee,int32_t s[40],int button,uint32_t now,uint32_t ms,int expanded){
@@ -90,6 +97,7 @@ int walkerClassicInput(uint8_t *ee,int32_t s[40],int button,uint32_t now,uint32_
         else if(b.finished)result(s,3,4);
         break;}
     case PACK:
+        if(s[REPLACE] && s[SUB]==1){s[SUB]=0;s[SEL]=0;s[SOUND]=1;break;} /* any button: on to the slots */
         if(s[REPLACE]){
             if(button!=1){s[SEL]=(s[SEL]+(button==0?3:1))%4;break;}
             if(s[SEL]==3){s[REPLACE]=0;s[VIEW]=HOME;break;}
@@ -174,6 +182,20 @@ void walkerClassicFrame(const uint8_t *ee,const int32_t s[40],uint8_t out[6144],
         raster(ee,out,0x91be + frame*192,60-shift,5,32,24,0);
         for(int n=0;n<4;n++){rect(out,4+n*7,33,5,3,n<s[BAT+1]?3:1);rect(out,60+n*7,33,5,3,n<s[BAT]?3:1);}
         label(out,"ATK DODGE CATCH",2,47);label(out,"<    O    >",8,57);
+    }else if(s[VIEW]==PACK && s[REPLACE] && s[SUB]==1){
+        /* The pack is full: say what was found before asking which slot to replace. */
+        char name[17];
+        if(s[REPLACE]==2){
+            label(out,"ITEM FOUND!",0,0);
+            snprintf(name,sizeof(name),"%.16s",lcdItem(walkerRouteItemId(ee,s[CHOICE])));label(out,name,0,17);
+            label(out,"PACK FULL",0,34);
+        }else{
+            label(out,"CAUGHT!",0,0);
+            raster(ee,out,0x9a7e + s[CHOICE]*384+frame*192,64,0,32,24,0);
+            snprintf(name,sizeof(name),"%.16s",speciesName(walkerRoutePokemonId(ee,s[CHOICE])));label(out,name,0,26);
+            label(out,"PARTY FULL",0,38);
+        }
+        label(out,"PRESS A BUTTON",4,56);
     }else if(s[VIEW]==PACK){
         label(out,s[REPLACE]?"REPLACE SLOT?":"INVENTORY",1,0);
         if(s[REPLACE] && s[SEL]==3)label(out,"LEAVE NEW FIND",3,25);
@@ -188,7 +210,7 @@ void walkerClassicFrame(const uint8_t *ee,const int32_t s[40],uint8_t out[6144],
             else if(index<16)id=ee[0xcec8+(index-6)*4]|ee[0xcec9+(index-6)*4]<<8;
             else id=0;
             char value[22];snprintf(value,sizeof(value),"%s %d",pokemon?"POKEMON":"ITEM",index+1);label(out,value,0,17);
-            const char *name=id?(pokemon?speciesName(id):itemName(id)):"EMPTY";
+            const char *name=id?(pokemon?speciesName(id):lcdItem(id)):"EMPTY";
             snprintf(value,sizeof(value),"%.16s",name);label(out,value,0,31);
             if(pokemon && id)for(unsigned candidate=0;candidate<3;candidate++)if(walkerRoutePokemonId(ee,candidate)==id){raster(ee,out,0x9a7e + candidate*384+frame*192,60,41,32,24,0);break;}
         }
@@ -208,7 +230,7 @@ void walkerClassicFrame(const uint8_t *ee,const int32_t s[40],uint8_t out[6144],
         label(out,message,0,6);
         if(s[RESULT_ID]==1)raster(ee,out,0x9a7e + s[CHOICE]*384+frame*192,32,21,32,24,0);
         if(s[RESULT_ID]==1){char name[17];snprintf(name,sizeof(name),"%.16s",speciesName(walkerRoutePokemonId(ee,s[CHOICE])));label(out,name,0,46);}
-        if(s[RESULT_ID]==2){char name[17];snprintf(name,sizeof(name),"%.16s",itemName(walkerRouteItemId(ee,s[CHOICE])));label(out,name,0,25);}
+        if(s[RESULT_ID]==2){char name[17];snprintf(name,sizeof(name),"%.16s",lcdItem(walkerRouteItemId(ee,s[CHOICE])));label(out,name,0,25);}
         label(out,"PRESS A BUTTON",4,56);
     }
 }

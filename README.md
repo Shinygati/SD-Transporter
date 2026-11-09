@@ -234,6 +234,8 @@ Deleting a phone profile's active Pokémon clears its trainer-name/public-ID pai
 
 - **Phone apps, dowsing with a full pack:** the classic walker screen listed every slot as EMPTY when choosing which item to replace (it read the item slots with the inventory's offset). The replacement itself always went into the chosen slot. The NDS and 3DS apps use their own screen and were not affected.
 - **Real HGSS cartridge launcher:** now reaches the game and the overworld with the virtual walker. The card engine is always on, the walker is placed around the loader's own memory page (heap ceiling 0x023CA000, as on DS flashcarts), and the DSi hardware is set up like a normal Slot-1 launch plus the SD controller.
+- **Phone apps, full pack or party:** the classic walker screen now shows what was found or caught first (ITEM FOUND! / CAUGHT!, its name, PACK FULL or PARTY FULL), then asks which slot to replace after a button press.
+- **TM and HM names:** items now show their move, for example "TM11 Sunny Day" and "HM05 Whirlpool", in every app. On the 16-character walker screen a name too long to fit drops its "TM59 " prefix.
 - **Real-cartridge launcher icon:** its own icon (a game card sending infrared), so it no longer looks like the companion app in TWiLight.
 - **Android settings:** removed the outdated "Build 1.5" label.
 - **Building:** `build-all.sh` builds everything from WSL with Docker, including the three modified TWiLight Menu++ themes, and assembles the per-setup release folders and zip. It also builds the signed Android APK when gradle, the Android SDK and the signing variables are set.
