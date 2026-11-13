@@ -4,7 +4,9 @@
 enum {
     UI_SCAN,
     UI_LIST,
+    UI_FOLDER_PICKER,
     UI_HOME,
+    UI_CLASSIC,
     UI_RADAR,
     UI_DOWSE,
     UI_BATTLE,
@@ -30,7 +32,10 @@ typedef struct {
     char message[160], detail[192], filename[160], toast[160];
     uint64_t toastUntil, clockMs;
     int toastScreen;
-    const char (*paths)[512];
+    const char (*paths)[512], (*folderPaths)[512];
+    const char *scanRoot, *folderPath;
+    int folderCount, folderCursor, folderLimited;
+    unsigned folderRevision;
     const uint8_t *statuses, *ee;
     WalkerInfo info;
     WalkerBattle battle;
@@ -40,6 +45,9 @@ typedef struct {
     int backupIndex, backupCount, backupLimited;
     char backupName[160], backupDetail[96], backupWalker[160];
     int saving;
+    const uint8_t *classicPixels;
+    unsigned classicRevision;
+    int classicContrast;
 } UIState;
 int uiInit(void);
 void uiExit(void);

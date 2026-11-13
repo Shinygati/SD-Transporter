@@ -1,6 +1,23 @@
 // GPL-3.0-or-later. No retail artwork or firmware is bundled.
 import Foundation
 
+struct WalkerVisitPlayback {
+    let id = UUID()
+    let data: Data
+    let reward: WalkerVisitReward
+    let started = ProcessInfo.processInfo.systemUptime
+
+    func frame() -> [UInt8]? {
+        let frame = UInt32((ProcessInfo.processInfo.systemUptime - started) * 4)
+        var pixels = [UInt8](repeating: 0, count: 6144)
+        var reward = reward
+        let ok = data.withUnsafeBytes {
+            walkerVisitFrame($0.bindMemory(to: UInt8.self).baseAddress, &reward, frame, &pixels)
+        }
+        return ok != 0 ? pixels : nil
+    }
+}
+
 enum WalkerCore {
     static func walkable(_ data: Data) -> Bool {
         guard data.count == 65536 else { return false }
@@ -67,6 +84,11 @@ enum WalkerCore {
     static func mutate<T>(_ data: inout Data, _ action: (UnsafeMutablePointer<UInt8>) -> T) -> T {
         precondition(data.count == 65536)
         return data.withUnsafeMutableBytes { action($0.bindMemory(to: UInt8.self).baseAddress!) }
+    }
+    static func visit(_ own: inout Data, peer: Data, now: UInt32, reward: inout WalkerVisitReward) -> Int32 {
+        peer.withUnsafeBytes { other in
+            mutate(&own) { walkerVisitWithReward($0, other.bindMemory(to: UInt8.self).baseAddress, now, &reward) }
+        }
     }
 }
 

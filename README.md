@@ -1,6 +1,6 @@
 # SD Transporter
 
-Current version **1.6.3**.
+Current version **1.7.0**.
 
 For app setup, activities, Wi-Fi handoffs and recovery, read [howtouse.txt](howtouse.txt).
 
@@ -229,6 +229,12 @@ See [LICENSE](LICENSE), the component license files and individual source notice
 Phone sync remains available when the console has no walker files. From the file list press **Y**, select the HGSS ROM under /roms, then **A** and confirm receiving the phone copy. This creates the matching missing save-folder destination and verifies the final .walker before acknowledging the return. If Android/iPhone reports a revoked old session, use its explicit phone-copy recovery confirmation with this console screen open. Existing active console files and other phone leases cannot be overwritten.
 
 Deleting a phone profile's active Pokémon clears its trainer-name/public-ID pairing. The next receive can bind that empty profile to another trainer. An ordinary successful return keeps the pairing. Recovery copies remain separate and do not appear as active Pokémon.
+
+## v1.7.0 update
+
+- On DSi CFW, Virtual Pokéwalker in forced DSi mode reserves memory below the DSi filesystem cache.
+- The DS and 3DS companions can search any selected folder and its subfolders for walker files.
+- Radar and Dowsing open from the Pokéwalker menu and use the original LCD graphics stored in the walker data.
 
 ## v1.6.3 update
 

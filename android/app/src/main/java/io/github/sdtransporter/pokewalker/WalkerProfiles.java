@@ -68,12 +68,15 @@ final class WalkerProfiles {
         for(int i=0;i<2;i++)WalkerStore.writeVerified(files[i],after[i]);
         WalkerStore.writeVerified(visitFile(),new byte[]{0x50,0x57,0x56,0x30});
     }
-    String visit(String first,String second)throws IOException {
+    int[] visit(String first,String second)throws IOException {
         ready();if(first.equals(second))throw new IOException("Choose another profile");
         WalkerStore a=store(first),b=store(second);
         if(!a.active()||!b.active()||a.returnPending||b.returnPending||!a.error.isEmpty()||!b.error.isEmpty())throw new IOException("Both Pokemon must be active on this phone and not syncing");
         a.save();b.save();a.archiveCurrent("connecting");b.archiveCurrent("connecting");
-        byte[] aa=a.data.clone(),bb=b.data.clone();int ar=Native.visit(aa,b.data,Native.now()),br=Native.visit(bb,a.data,Native.now());
+        byte[] aa=a.data.clone(),bb=b.data.clone();
+        int[] reward=new int[3];
+        long now=Native.now();
+        int ar=Native.visit(aa,b.data,now,reward),br=Native.visit(bb,a.data,now,null);
         if(ar==-1||br==-1)throw new IOException("These Pokewalkers already met today");
         if(ar<=0||br<=0)throw new IOException("Two different registered Pokewalkers with partners are required");
         byte[] beforeA=read(a.file),beforeB=read(b.file),afterA,afterB;
@@ -85,7 +88,7 @@ final class WalkerProfiles {
             WalkerStore.writeVerified(visitFile(),bytes.toByteArray());recoverVisit();
             a.data=aa;b.data=bb;a.archiveCurrent("connected");b.archiveCurrent("connected");
         }catch(IOException ex){error="Profile connection needs recovery: "+ex.getMessage();for(WalkerStore s:all()){s.error=error;s.visitBlocked=true;}throw ex;}
-        return "The Pokemon played together. Both gifts were saved. Meet again tomorrow.";
+        return reward;
     }
     void ready()throws IOException{if(!error.isEmpty())throw new IOException(error);for(WalkerStore s:all())if(s.syncing)throw new IOException("Wait for the transfer to finish before changing profiles");}
     void save()throws IOException{

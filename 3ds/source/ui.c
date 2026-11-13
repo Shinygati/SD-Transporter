@@ -1,7 +1,8 @@
-/* Original vector interface. GPL-3.0-or-later. Game sprites are read only
- * from the user's EEPROM at runtime; no retail artwork is bundled. */
+/* 3DS interface. GPL-3.0-or-later. Game sprites are read from the user's
+ * EEPROM at runtime. See CREDITS.md for the Pokéwalker shell artwork. */
 #include "ui.h"
 #include "species.h"
+#include "../../shared/walker_shell.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -9,12 +10,55 @@
 #include <citro2d.h>
 static C3D_RenderTarget *targets[2];
 static C2D_TextBuf textbuf, measurebuf;
+static C2D_SpriteSheet walkerShell;
+static const uint8_t walkerShellTexture[] __attribute__((aligned(4))) = {
+#embed "../../shared/walker-shell-3ds.t3x"
+};
 #define RGB(r, g, b) ((uint32_t)(r) | ((uint32_t)(g) << 8) | ((uint32_t)(b) << 16) | 0xff000000u)
 static const uint32_t INK = RGB(233, 246, 240), MUTED = RGB(139, 172, 170),
                       TEAL = RGB(68, 221, 179), GOLD = RGB(252, 202, 102), PANEL = RGB(23, 48, 59),
                       RED = RGB(237, 111, 111), LCD = RGB(198, 219, 168);
 static void rect(float x, float y, float w, float h, uint32_t c) {
     C2D_DrawRectSolid(x, y, 0, w, h, c);
+}
+static uint32_t shellColor(uint32_t rgb) {
+    return RGB((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
+}
+static void drawShell(const WalkerShellLayout *layout, uint32_t lcdColor) {
+    float scale = (float)layout->size / WALKER_SHELL_3DS_SIZE;
+    C2D_DrawImageAt(C2D_SpriteSheetGetImage(walkerShell, 0),
+                    layout->x, layout->y, 0, NULL, scale, scale);
+    for (int row = 0; row < layout->lcdHeight; row++) {
+        int inset = walkerShellLcdInset(layout, row);
+        rect(layout->lcdX + inset, layout->lcdY + row,
+             layout->lcdWidth - 2 * inset, 1, lcdColor);
+    }
+}
+static void classicShell(const UIState *s) {
+    WalkerShellLayout layout = walkerShellLayout(320, 240);
+    const uint32_t *palette = walkerShellPalette(s->classicContrast);
+    uint32_t shades[4];
+    for (int shade = 0; shade < 4; shade++)
+        shades[shade] = shellColor(palette[shade]);
+    drawShell(&layout, shades[0]);
+
+    for (int y = 0; y < 64; y++) {
+        int top = (y * layout.pixelsHeight + 32) / 64;
+        int bottom = ((y + 1) * layout.pixelsHeight + 32) / 64;
+        const uint8_t *row = s->classicPixels + y * 96;
+        for (int x = 0; x < 96;) {
+            int start = x;
+            uint8_t shade = row[x++];
+            while (x < 96 && row[x] == shade)
+                x++;
+            if (shade) {
+                int left = (start * layout.pixelsWidth + 48) / 96;
+                int right = (x * layout.pixelsWidth + 48) / 96;
+                rect(layout.pixelsX + left, layout.pixelsY + top,
+                     right - left, bottom - top, shades[shade]);
+            }
+        }
+    }
 }
 static void circle(float x, float y, float radius, uint32_t c) {
     C2D_DrawCircleSolid(x, y, 0, radius, c);
@@ -171,33 +215,17 @@ static void raster(const uint8_t *ee, unsigned off, int width, int height, float
         }
 }
 static void device(const UIState *s) {
-    circle(113, 120, 87, RGB(7, 19, 30));
-    circle(111, 115, 84, RGB(219, 230, 219));
-    for (int y = -79; y < 0; y++) {
-        float half = sqrtf(80 * 80 - y * y);
-        rect(111 - half, 115 + y, half * 2, 1, RGB(208, 74 + (y + 79) / 4, 76));
-    }
-    roundbox(38, 69, 146, 102, 13, RGB(43, 62, 58));
-    roundbox(44, 75, 134, 90, 8, LCD);
+    WalkerShellLayout layout = walkerShellAt(27, 48, 168);
+    drawShell(&layout, LCD);
     if (s->loaded && s->info.hasPokemon && s->ee) {
         if (s->screen == UI_BATTLE) {
-            raster(s->ee, 0x91be + ((s->frame / 24) & 1) * 192, 32, 24, 57, 105, 1.25f);
+            raster(s->ee, 0x91be + ((s->frame / 24) & 1) * 192, 32, 24, 68, 109, 1.25f);
             raster(s->ee, 0x9a7e + s->battle.encounter * 384 + ((s->frame / 24) & 1) * 192, 32, 24,
-                   125, 105, 1.25f);
-        } else
-            /* Preserve the original large portrait, including its native crop. */
-            raster(s->ee, 0x933e + ((s->frame / 24) & 1) * 768, 64, 48, 63, 84, 1.5f);
-    } else {
-        circle(111, 118, 22, RGB(108, 142, 105));
-        rect(88, 115, 46, 6, LCD);
-        circle(111, 118, 9, LCD);
-        circle(111, 118, 5, RGB(108, 142, 105));
+                   114, 109, 1.25f);
+        } else {
+            raster(s->ee, 0x933e + ((s->frame / 24) & 1) * 768, 64, 48, 71, 94, 1.25f);
+        }
     }
-    for (int i = 0; i < 3; i++) {
-        circle(78 + i * 33, 185, 9, RGB(53, 77, 73));
-        circle(78 + i * 33, 183, 7, RGB(114, 140, 126));
-    }
-    label(66, 50, .5f, RGB(252, 231, 218), "POKÉWALKER", 110);
 }
 static void infoTop(const UIState *s) {
     device(s);
@@ -250,14 +278,16 @@ int uiInit(void) {
     if (!C2D_Init(12000))
         return 0;
     C2D_Prepare();
+    walkerShell = C2D_SpriteSheetLoadFromMem(walkerShellTexture, sizeof(walkerShellTexture));
     /* Citro2D applies linear filtering to the shared system font. */
     targets[0] = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     targets[1] = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
     textbuf = C2D_TextBufNew(8192);
     measurebuf = C2D_TextBufNew(1024);
-    return textbuf && measurebuf && targets[0] && targets[1];
+    return walkerShell && textbuf && measurebuf && targets[0] && targets[1];
 }
 void uiExit(void) {
+    C2D_SpriteSheetFree(walkerShell);
     C2D_TextBufDelete(textbuf);
     C2D_TextBufDelete(measurebuf);
     C2D_Fini();
@@ -284,7 +314,7 @@ void uiTop(const UIState *s) {
         device(s);
         label(215, 72, .55f, INK, "A little discovery", 165);
         label(215, 99, .37f, MUTED, "Finding your walkers", 165);
-        label(215, 117, .37f, MUTED, "inside /roms only.", 165);
+        label(215, 117, .37f, MUTED, "and its subfolders.", 165);
         fmt(215, 151, .4f, TEAL, 165, "%d found", s->count);
         label(24, 215, .32f, MUTED, "Your next adventure is waiting.", 350);
         return;
@@ -292,7 +322,7 @@ void uiTop(const UIState *s) {
     if (s->screen == UI_LIST && !s->count) {
         device(s);
         label(214, 74, .55f, INK, "A fresh start", 165);
-        label(214, 106, .35f, MUTED, "No walkers in /roms.", 165);
+        label(214, 106, .35f, MUTED, "No walkers found.", 165);
         label(214, 128, .35f, MUTED, "Start one in HGSS first.", 165);
         return;
     }
@@ -306,6 +336,8 @@ void uiTop(const UIState *s) {
         label(24,216,.4f,MUTED,s->filename,350);return;
     }
     infoTop(s);
+    if (s->screen == UI_CLASSIC && s->toast[0])
+        label(24, 203, .40f, GOLD, s->toast, 352);
     if (s->screen == UI_BATTLE) {
         roundbox(211, 57, 170, 116, 10, PANEL);
         fmt(224, 66, .55f, INK, 145, "%s",
@@ -371,11 +403,31 @@ void uiBottom(const UIState *s) {
               s->discardPrompt ? "A Discard   B Keep" : "D-pad  A Select  Y Retry", 290);
         return;
     }
+    if (s->screen == UI_CLASSIC && s->classicPixels) {
+        classicShell(s);
+        return;
+    }
+    if (s->screen == UI_FOLDER_PICKER) {
+        label(17, 12, .6f, INK, "Choose search folder", 290);
+        paragraph(17, 37, .5f, TEAL, s->folderPath, 290, 2, 15);
+        if (!s->folderCount)
+            label(20, 70, .5f, INK, "No subfolders", 280);
+        int first = s->folderCursor / 6 * 6;
+        for (int row = 0; row < 6 && first + row < s->folderCount; row++) {
+            int index = first + row, y = 69 + row * 22;
+            roundbox(12, y, 296, 20, 5, index == s->folderCursor ? RGB(37, 97, 89) : PANEL);
+            label(20, y + 2, .5f, INK, strrchr(s->folderPaths[index], '/') + 1, 278);
+        }
+        label(17, 202, .47f, s->folderLimited ? GOLD : MUTED,
+              s->folderLimited ? "Folder list limit reached" : "Y Scan /roms   X Cancel", 286);
+        label(17, 222, .5f, INK, "B Up   START Scan here", 286);
+        return;
+    }
     if (s->screen == UI_SCAN) {
-        label(20, 29, .63f, INK, s->validation ? "Checking walkers" : "Exploring /roms", 280);
+        label(20, 29, .63f, INK, s->validation ? "Checking walkers" : "Finding walkers", 280);
         paragraph(20, 64, .55f, INK,
                   s->validation ? "Reading the 64 KiB EEPROM files"
-                                : "Subfolders included. System folders skipped.",
+                                : s->scanRoot,
                   280, 2, 18);
         roundbox(20, 110, 280, 14, 7, RGB(37, 65, 72));
         if (s->validation)
@@ -387,7 +439,7 @@ void uiBottom(const UIState *s) {
         fmt(20, 135, .43f, INK, 280, "%d folders   ·   %d files", s->dirs, s->files);
         if (s->validation)
             fmt(20, 159, .36f, TEAL, 280, "%d of %d walkers checked", s->done, s->total);
-        label(20, 214, .3f, MUTED, "START  Cancel search", 280);
+        label(20, 214, .3f, MUTED, "X Folders   START Cancel", 280);
         return;
     }
     if (s->screen == UI_LIST) {
@@ -396,7 +448,7 @@ void uiBottom(const UIState *s) {
         if (!s->count) {
             label(20, 58, .43f, INK, "No .walker files yet", 280);
             paragraph(20, 90, .55f, INK,
-                      "Enable Virtual Pokewalker in HGSS's Y menu. Keep its file under /roms.", 280,
+                      "Press X to choose a search folder.", 280,
                       4, 20);
         }
         for (int row = 0; row < 7; row++) {
@@ -416,7 +468,7 @@ void uiBottom(const UIState *s) {
         }
         if (s->scanLimited)
             label(16, 212, .55f, GOLD, "Search limit reached", 288);
-        label(16, 223, .55f, INK, "A Open  Y Games  SELECT Recovery", 288);
+        label(16, 223, .55f, INK, "X Folders  Y Games  SELECT Recovery", 288);
         return;
     }
     if(s->screen==UI_COURSE_CONFIRM){
@@ -503,46 +555,15 @@ void uiBottom(const UIState *s) {
                           : s->screen == UI_PACK     ? "Pokémon & items"
                           : s->screen == UI_REPLACE  ? "Pack full — choose a slot"
                           : s->screen == UI_CARD     ? "Trainer card"
-                          : s->screen == UI_SETTINGS ? "Settings 1.6.3"
+                          : s->screen == UI_SETTINGS ? "Settings 1.7.0"
                                                      : "Adventure journal";
     label(17, 12, .52f, INK, heading, 290);
     if (s->screen == UI_HOME) {
-        const char *a[] = {"Poké Radar",   "Dowsing",    "Your pack",
-                           "Trainer card", "Update steps", "Settings"};
-        const char *b[] = {"10 watts",     "3 watts",       "Your rewards",
-                           "Stroll stats", "Refresh progress", "Step rate"};
-        if (s->pendingEncounter) {
-            a[0] = "Wild Pokémon!";
-            b[0] = "Free encounter";
-        }
-        for (int i = 0; i < 6; i++)
-            tile(12 + (i % 2) * 154, 44 + (i / 2) * 50, 142, 46, a[i], b[i], i == s->selection,
-                 i < 2 ? GOLD : TEAL);
+        const char *labels[] = {"Pokéwalker", "Update steps", "Settings"};
+        for (int i = 0; i < 3; i++)
+            tile(12,44+i*50,296,46,labels[i],"",i==s->selection,i==0?GOLD:TEAL);
         label(16, 198, .55f, s->saveError ? RED : TEAL,
               s->saveError ? "Save failed: Y retry, X discard" : s->toast, 288);
-    } else if (s->screen == UI_RADAR || s->screen == UI_DOWSE) {
-        int radar = s->screen == UI_RADAR, n = radar ? 4 : 6, cols = radar ? 2 : 3;
-        float w = radar ? 137 : 91;
-        for (int i = 0; i < n; i++) {
-            float x = 14 + (i % cols) * (radar ? 155 : 101), y = 57 + (i / cols) * 62;
-            int active = i == s->activePatch, sel = i == s->selectedPatch;
-            roundbox(x, y, w, 52, 8, active ? RGB(94, 111, 61) : sel ? RGB(34, 91, 83) : PANEL);
-            triangle(x + w * .35f, y + 13, 20, 22, active ? GOLD : RGB(71, 135, 103));
-            triangle(x + w * .58f, y + 9, 24, 28, active ? GOLD : RGB(88, 158, 115));
-            if (active)
-                label(x + w - 24, y + 7, .55f, INK, "!", 20);
-            if (sel)
-                rect(x + 10, y + 46, w - 20, 2, TEAL);
-        }
-        if (!radar)
-            fmt(18, 43, .3f, GOLD, 280, "%d attempts left", s->attempts);
-        status(s);
-    } else if (s->screen == UI_BATTLE) {
-        tile(12, 57, 94, 67, "Attack", "A", s->selection == 0, TEAL);
-        tile(113, 57, 94, 67, "Evade", "A", s->selection == 1, TEAL);
-        tile(214, 57, 94, 67, "Catch", "A", s->selection == 2, GOLD);
-        paragraph(20, 141, .55f, INK, "Lower HP makes catching easier.", 280, 2, 18);
-        status(s);
     } else if (s->screen == UI_PACK || s->screen == UI_REPLACE) {
         int replace=s->screen==UI_REPLACE;
         for(int i=0;i<3;i++) {

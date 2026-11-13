@@ -24,7 +24,8 @@ final class Native {
     static native byte[] friendlyFrame(byte[] a,byte[] b,int[] board,int side,int selected,long ms);
     static native String moveName(int id);
     static native int[] menuIcon(int kind);
-    static native int visit(byte[] own,byte[] peer,long now);
+    static native int visit(byte[] own,byte[] peer,long now,int[] details);
+    static native byte[] visitFrame(byte[] own,int[] details,int frame);
     static native void classicInput(byte[] data,int[] state,int button,long now,long ms,boolean expanded);
     static native byte[] classicFrame(byte[] data,int[] state,long ms);
     static native short[] classicSound(byte[] data,int score);

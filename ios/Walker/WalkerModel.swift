@@ -99,13 +99,15 @@ import SwiftUI
         do { try disk?.archive(next,reason:reason);try persist(next) }
         catch { blockedProfiles.insert(selectedProfileID);storageBlocked=true;throw error }
     }
-    func nearbyVisit(_ peer: Data) throws {
+    func nearbyVisit(_ peer: Data) throws -> WalkerVisitPlayback? {
         try currentNearby()
         var next=state
-        let result=peer.withUnsafeBytes { other in WalkerCore.mutate(&next.data!) { pw_visit($0,other.bindMemory(to:UInt8.self).baseAddress,WalkerCore.now) } }
+        var reward = WalkerVisitReward()
+        let result = WalkerCore.visit(&next.data!, peer: peer, now: WalkerCore.now, reward: &reward)
         guard result != 0 else { throw WalkerError.message("These Pokémon cannot visit.") }
-        if result == -1 { return }
+        if result == -1 { return nil }
         try commitNearby(next,reason:"visited")
+        return WalkerVisitPlayback(data: next.data!, reward: reward)
     }
     func nearbyPay(session: String,peer: String) throws {
         try currentNearby()
@@ -174,24 +176,27 @@ import SwiftUI
         wav.append(contentsOf: "RIFF".utf8);word(UInt32(count * 2 + 36));wav.append(contentsOf: "WAVEfmt ".utf8);word(UInt32(16));word(UInt16(1));word(UInt16(1));word(UInt32(22050));word(UInt32(44100));word(UInt16(2));word(UInt16(16));wav.append(contentsOf: "data".utf8);word(UInt32(count * 2));pcm.withUnsafeBytes { wav.append(contentsOf: $0.prefix(Int(count) * 2)) }
         return wav
     }
-    func visit(_ id: String) {
-        guard usable, id != selectedProfileID, let other = profileStates[id], canTrackForVisit(other, id), let ownDisk = disk, let peerDisk = profileDisks[id] else { message = "Both Pokemon must be active on this phone and not syncing."; return }
+    func visit(_ id: String) -> WalkerVisitPlayback? {
+        guard usable, id != selectedProfileID, let other = profileStates[id], canTrackForVisit(other, id), let ownDisk = disk, let peerDisk = profileDisks[id] else { message = "Both Pokemon must be active on this phone and not syncing."; return nil }
         tick()
         do {
             var own = state
-            guard let peer = profileStates[id] else { return }
+            guard let peer = profileStates[id] else { return nil }
             var otherNext = peer
             try ownDisk.save(own); try peerDisk.save(peer)
             try ownDisk.archive(own, reason: "connecting"); try peerDisk.archive(peer, reason: "connecting")
-            let a = peer.data!.withUnsafeBytes { peerBytes in WalkerCore.mutate(&own.data!) { pw_visit($0, peerBytes.bindMemory(to: UInt8.self).baseAddress, WalkerCore.now) } }
-            let b = state.data!.withUnsafeBytes { ownBytes in WalkerCore.mutate(&otherNext.data!) { pw_visit($0, ownBytes.bindMemory(to: UInt8.self).baseAddress, WalkerCore.now) } }
-            guard a != -1, b != -1 else { message = "These Pokewalkers already met today."; return }
-            guard a > 0, b > 0 else { message = "Two different registered Pokewalkers with partners are required."; return }
+            let now = WalkerCore.now
+            var reward = WalkerVisitReward(), peerReward = WalkerVisitReward()
+            let a = WalkerCore.visit(&own.data!, peer: peer.data!, now: now, reward: &reward)
+            let b = WalkerCore.visit(&otherNext.data!, peer: state.data!, now: now, reward: &peerReward)
+            guard a != -1, b != -1 else { message = "These Pokewalkers already met today."; return nil }
+            guard a > 0, b > 0 else { message = "Two different registered Pokewalkers with partners are required."; return nil }
             try WalkerPairTransaction.commit(root: WalkerDisk().root, first: (selectedProfileID, ownDisk, own), second: (id, peerDisk, otherNext), profiles: Set(profiles.map(\.id)))
             profileStates[selectedProfileID] = own; state = own; profileStates[id] = otherNext
             try ownDisk.archive(own, reason: "connected"); try peerDisk.archive(otherNext, reason: "connected")
             objectWillChange.send(); message = "The Pokemon played together. Both gifts were saved. Meet again tomorrow."
-        } catch { blockedProfiles.formUnion(profiles.map(\.id)); storageBlocked = true; fail(error) }
+            return WalkerVisitPlayback(data: own.data!, reward: reward)
+        } catch { blockedProfiles.formUnion(profiles.map(\.id)); storageBlocked = true; fail(error); return nil }
     }
     private func canTrackForVisit(_ value: WalkerJournal, _ id: String) -> Bool { value.data != nil && !value.revoked && !value.returnPending && !value.token.isEmpty && !blockedProfiles.contains(id) }
     func friendItem(_ slot: Int) -> String {

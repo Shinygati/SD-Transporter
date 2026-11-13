@@ -24,7 +24,7 @@ was already on it):
   BOOT.NDS                     TWiLight Menu++
   _nds                         TWiLight Menu++ and SD Transporter files
   roms                         where your games go
-  cias/TWiLight Menu.cia       puts TWiLight Menu++ on your HOME Menu
+  cia/TWiLight Menu.cia        puts TWiLight Menu++ on your HOME Menu
   3ds/pokewalker3ds            the 3DS Pokewalker app
 
 If you already had TWiLight Menu++ on this card, that's fine. Copying
@@ -39,7 +39,7 @@ Skip this if TWiLight Menu++ is already on your HOME Menu.
 
   1. Put the SD card back and turn the 3DS on.
   2. Open FBI.
-  3. Go to SD, then cias, then pick "TWiLight Menu.cia".
+  3. Go to SD, then cia, then pick "TWiLight Menu.cia".
   4. Choose "Install and delete CIA" and press A to confirm.
   5. Press HOME. TWiLight Menu++ is now on your HOME Menu.
 

@@ -97,9 +97,9 @@ and move-name message bank. The friendly-battle rules are project code, separate
 from HGSS battle simulation. Android Bluetooth APIs and Apple's CoreBluetooth
 framework are platform dependencies; their SDKs are not redistributed.
 
-The phone device shell image was supplied by the project owner for this update.
-The source image is unchanged; the displayed LCD is drawn over its sample screen at
-runtime. The original image creator/license has not been independently
+The Pokéwalker shell image used on phones, DS and 3DS was supplied by the project
+owner. The consoles use resized copies of the phone artwork. All apps draw their
+LCD over the sample screen at runtime. The original image creator/license has not been independently
 identified. This asset is not asserted to be GPL-licensed project artwork;
 existing image and hardware-design rights remain with their respective owners.
 

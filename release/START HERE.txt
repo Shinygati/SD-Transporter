@@ -1,4 +1,4 @@
-SD Transporter v1.6.3
+SD Transporter v1.7.0
 =====================
 
 SD Transporter adds a virtual Pokewalker to Pokemon HeartGold and

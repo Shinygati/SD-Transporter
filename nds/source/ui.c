@@ -147,7 +147,7 @@ void uiTop(const UIState *s) {
     if(s->info.registered)fmt(8,100,GOLD,30,"Trainer ID: %05lu",(unsigned long)s->info.trainerId);
     else text(8,100,GOLD,"Trainer ID unavailable",30);
     text(8,129,INK,s->info.hasPokemon?speciesName(s->info.species):"No companion",30);
-    text(8,158,MUTED,"A Open selected walker",30);return;
+    return;
   }
   if (!s->loaded || !s->info.hasPokemon) {
     ndsUiRect(60, 38, 136, 99, PANEL);
@@ -229,11 +229,31 @@ void uiBottom(const UIState *s) {
     }
     return;
   }
+  if (s->screen == UI_CLASSIC && s->classicPixels) {
+    ndsUiWalkerShell(s->classicPixels, s->classicContrast);
+    return;
+  }
+  if (s->screen == UI_FOLDER_PICKER) {
+    header("Choose search folder");
+    wrap(8, 36, TEAL, s->folderPath, 30, 2);
+    if (!s->folderCount)
+      text(8, 63, INK, "No subfolders", 30);
+    int first = s->folderCursor / 6 * 6;
+    for (int row = 0; row < 6 && first + row < s->folderCount; row++) {
+      int index = first + row, y = 58 + row * 17;
+      panel(8, y, 240, 15, index == s->folderCursor);
+      text(12, y + 4, INK, strrchr(s->folderPaths[index], '/') + 1, 28);
+    }
+    text(8, 163, s->folderLimited ? GOLD : MUTED,
+         s->folderLimited ? "Folder list limit reached" : "Y Scan /roms  X Cancel", 30);
+    footer("B Up  START Scan here");
+    return;
+  }
   if (s->screen == UI_SCAN) {
     header(s->validation ? "Checking files" : "Finding walkers");
     wrap(8, 40, INK,
          s->validation ? "Reading your walker files."
-                       : "Searching /roms and subfolders.",
+                       : s->scanRoot,
          30, 3);
     float progress = s->validation ? s->progress : (s->frame % 120) / 119.f;
     bar(8, 94, 240, 12, progress, TEAL);
@@ -241,15 +261,14 @@ void uiBottom(const UIState *s) {
     fmt(8, 137, TEAL, 30, "%d walkers found", s->count);
     if (s->validation)
       fmt(8, 155, MUTED, 30, "Checked %d of %d", s->done, s->total);
-    footer("START Cancel search");
+    footer("X Folders  START Cancel");
     return;
   }
   if (s->screen == UI_LIST) {
     header("Your walkers");
     if (!s->count)
       wrap(8, 42, INK,
-           "No .walker files under /roms. Enable Virtual Pokewalker in the "
-           "HGSS Y menu first.",
+           "No .walker files found. Press X to choose a search folder.",
            30, 7);
     for (int row = 0; row < 7 && s->page + row < s->count; row++) {
       int i = s->page + row, y = 35 + row * 19;
@@ -267,7 +286,7 @@ void uiBottom(const UIState *s) {
     }
     if (s->scanLimited)
       text(8, 169, GOLD, "Search limit reached", 30);
-    footer("A Open Y Games SELECT Backups");
+    footer("X Folder  SEL Backups");
     return;
   }
   if(s->screen==UI_COURSE_CONFIRM){
@@ -420,7 +439,7 @@ void uiBottom(const UIState *s) {
     return;
   }
   const char *title = s->screen == UI_HOME       ? "Adventure menu"
-                      : s->screen == UI_SETTINGS ? "Settings 1.6.3"
+                      : s->screen == UI_SETTINGS ? "Settings 1.7.0"
                       : s->screen == UI_RADAR    ? "Poke Radar"
                       : s->screen == UI_DOWSE    ? "Dowsing"
                       : s->screen == UI_BATTLE   ? "Choose a move"
@@ -430,19 +449,11 @@ void uiBottom(const UIState *s) {
                                                  : "Journal";
   header(title);
   if (s->screen == UI_HOME) {
-    const char *a[] = {"Poke Radar",   "Dowsing",    "Your pack",
-                       "Trainer card", "Update steps", "Settings"};
-    const char *b[] = {"10 watts",     "3 watts",  "Rewards",
-                       "Stroll stats", "Save now", "Walking"};
-    if (s->pendingEncounter) {
-      a[0] = "Wild Pokemon";
-      b[0] = "Free battle";
-    }
-    for (int i = 0; i < 6; i++) {
-      int x = i % 2 ? 134 : 8, y = 36 + (i / 2) * 40;
-      panel(x, y, 114, 36, i == s->selection);
-      text(x + 6, y + 6, INK, a[i], 13);
-      text(x + 6, y + 21, i == s->selection ? GOLD : MUTED, b[i], 13);
+    const char *labels[] = {"Pokewalker", "Update steps", "Settings"};
+    for (int i = 0; i < 3; i++) {
+      int y = 36 + i * 40;
+      panel(8,y,240,36,i==s->selection);
+      text(16,y+12,INK,labels[i],25);
     }
     wrap(8, 158, TEAL, s->toast, 30, 1);
   } else if (s->screen == UI_SETTINGS) {
@@ -468,32 +479,6 @@ void uiBottom(const UIState *s) {
     }
     panel(8,156,240,20,0);text(16,162,TEAL,"X Backups  SELECT Rewards",28);
 
-  } else if (s->screen == UI_RADAR || s->screen == UI_DOWSE) {
-    int radar = s->screen == UI_RADAR, cols = radar ? 2 : 3;
-    for (int i = 0; i < cols * 2; i++) {
-      int x = 11 + (i % cols) * (radar ? 124 : 81), y = 46 + (i / cols) * 50,
-          w = radar ? 110 : 73;
-      int selected = i == s->selectedPatch, active = i == s->activePatch;
-      panel(x, y, w, 42, selected);
-      text(x + 8, y + 9, active ? GOLD : MUTED,
-           active ? (radar ? "RUSTLING!" : "Searched") : "Grass",
-           radar ? 12 : 8);
-      if (selected)
-        text(x + 8, y + 25, TEAL, "A Search", radar ? 12 : 8);
-    }
-    if (radar)
-      bar(11, 137, 234, 5, s->progress, GOLD);
-    else
-      fmt(8, 34, GOLD, 30, "%d attempts left", s->attempts);
-    wrap(8, 148, INK, s->message, 30, 2);
-  } else if (s->screen == UI_BATTLE) {
-    const char *moves[] = {"Attack", "Evade", "Catch"};
-    for (int i = 0; i < 3; i++) {
-      panel(8 + i * 82, 46, 76, 53, i == s->selection);
-      text(16 + i * 82, 63, INK, moves[i], 8);
-    }
-    wrap(8, 113, INK,
-         s->message[0] ? s->message : "Lower HP makes catching easier.", 30, 5);
   } else if (s->screen == UI_PACK || s->screen == UI_REPLACE) {
     int replace = s->screen == UI_REPLACE;
     for (int i = 0; i < 3; i++) {

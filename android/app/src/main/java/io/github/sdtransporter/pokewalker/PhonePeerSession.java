@@ -79,9 +79,9 @@ final class PhonePeerSession implements AutoCloseable,PeerBluetooth.Listener {
             switch(kind){
             case "ready":remoteReady=true;if(host)startIfReady();else message="Other player is ready";break;
             case "visit":
-                if(host||battle||!localReady)throw new IOException("Unexpected visit");visit();send(object("visited"));phase="complete";message="Visit complete. Gifts saved.";break;
+                if(host||battle||!localReady)throw new IOException("Unexpected visit");visit();send(object("visited"));phase="complete";message=visitResultText();break;
             case "visited":
-                if(!host||battle||!started)throw new IOException("Unexpected visit confirmation");phase="complete";message="Visit complete. Gifts saved.";break;
+                if(!host||battle||!started)throw new IOException("Unexpected visit confirmation");phase="complete";message=visitResultText();break;
             case "start":
                 if(host||!battle||!localReady||started)throw new IOException("Unexpected battle start");pay();board=Native.friendlyStart(remote,local,input.getInt("seed"));started=true;phase="waiting";message="Starting battle";send(object("started"));break;
             case "started":
@@ -117,9 +117,12 @@ final class PhonePeerSession implements AutoCloseable,PeerBluetooth.Listener {
         pay();int seed=new SecureRandom().nextInt();board=Native.friendlyStart(local,remote,seed);phase="waiting";message="Starting battle";send(object("start").put("seed",seed));
     }
     private void visit()throws IOException{
-        byte[] changed=owner.data.clone();int result=Native.visit(changed,remote,Native.now());
+        byte[] changed=owner.data.clone();
+        int[] reward=new int[3];
+        int result=Native.visit(changed,remote,Native.now(),reward);
         if(result==0)throw new IOException("These Pokémon cannot visit");if(result==-1)return;
         owner.archiveCurrent("visiting");owner.data=changed;owner.archiveCurrent("visited");owner.save();
+        visitReward=reward;
     }
     private void pay()throws IOException{
         if(owner.battlePaid&&!owner.battleDone&&owner.battlePeer.equals(remoteKey)){owner.battleSession=session;owner.save();return;}
@@ -157,6 +160,8 @@ final class PhonePeerSession implements AutoCloseable,PeerBluetooth.Listener {
         owner.archiveCurrent("before-battle-result");owner.data=next;owner.battleDone=true;owner.battleWinner=result;owner.battleRewardChoice=pending;owner.battleRewarded=true;owner.archiveCurrent("battle-result");owner.save();
     }
     private String resultText(){return owner.battleWinner==1?owner.battleRewardChoice>=0?"You won. Choose a slot for your item reward.":"You won. Your item reward is saved.":owner.battleWinner==2?"Battle complete. Better luck next time.":"The battle ended in a draw.";}
+    int[] visitReward;
+    private String visitResultText(){return visitReward==null?"This Pokéwalker already received today's gift.":"Visit complete. Gifts saved.";}
     byte[] frame(){return board==null||remote==null?null:Native.friendlyFrame(host?local:remote,host?remote:local,board,host?0:1,selected,SystemClock.elapsedRealtime());}
     private static JSONArray array(int[] values){JSONArray result=new JSONArray();for(int v:values)result.put(v);return result;}
     private static int[] integers(JSONArray values)throws IOException,JSONException{if(values.length()!=24)throw new IOException("Invalid battle state");int[] out=new int[24];for(int n=0;n<24;n++)out[n]=values.getInt(n);return out;}

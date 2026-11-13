@@ -55,6 +55,10 @@ int walkerChooseItemEx(uint8_t *,unsigned *,int expanded);
  * then publish both through a transaction. 1=item, 2=watts, -1=already met,
  * 0=invalid/same device/no partner/clock backwards. */
 int walkerVisit(uint8_t *,const uint8_t *,uint32_t);
+typedef struct {
+    uint8_t notes, itemIndex, watts;
+} WalkerVisitReward;
+int walkerVisitWithReward(uint8_t *, const uint8_t *, uint32_t, WalkerVisitReward *);
 unsigned walkerFriendItemId(const uint8_t *,unsigned);
 int walkerStorePokemon(uint8_t *, unsigned, int, uint32_t);
 int walkerStoreItem(uint8_t *, unsigned, int, uint32_t);

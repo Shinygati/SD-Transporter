@@ -107,7 +107,7 @@ twilight() { # twilight PACKAGE DEST : official files, then SD Transporter on to
   cp -a "$src/." "$dst/"
   rm -f "$dst/version.txt" "$dst/Games supported with widescreen.txt"
   rm -rf "$dst/Autoboot" "$dst/Flashcart Loader"      # flashcarts: shipped separately
-  if [ -f "$dst/TWiLight Menu.cia" ]; then mkdir -p "$dst/cias"; mv "$dst/TWiLight Menu.cia" "$dst/cias/"; fi
+  if [ -f "$dst/TWiLight Menu.cia" ]; then mkdir -p "$dst/cia"; mv "$dst/TWiLight Menu.cia" "$dst/cia/"; fi
   cp "$TWL/romsel_aktheme/romsel_aktheme.nds"           "$dst/_nds/TWiLightMenu/akmenu.srldr"
   cp "$TWL/romsel_dsimenutheme/romsel_dsimenutheme.nds" "$dst/_nds/TWiLightMenu/dsimenu.srldr"
   cp "$TWL/romsel_r4theme/romsel_r4theme.nds"           "$dst/_nds/TWiLightMenu/r4menu.srldr"

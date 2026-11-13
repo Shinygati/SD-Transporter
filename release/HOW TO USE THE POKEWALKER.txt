@@ -70,6 +70,10 @@ Walking, catching and finding items
    Steps build up while the app is open, and also while the console is
    closed or asleep in the app.
 
+   If the walker is elsewhere, press X on the walker list. Use A to open a
+   folder, B to go up, and START to search that folder and its subfolders.
+   Press Y in the folder picker to search /roms again.
+
 4. Use the Poke Radar to catch Pokemon and Dowsing to find items.
 
 5. When you're done, press START. This saves and closes the app. Always

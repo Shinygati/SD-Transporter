@@ -404,6 +404,14 @@ int hookNdsRetailArm9(
 				// Take the virtual cartridge/walker areas off the end of the cache.
 				const u32 slot2Size = slot2EmuWanted(ndsHeader, ce9) ? SLOT2EMU_RESERVE : 0;
 				const u32 walkerSize = walkerWanted(ndsHeader, ce9) ? WALKER_RESERVE : 0;
+				extern u8 bootstrapOnFlashcard;
+				if (walkerSize && dsiMode && consoleModel == 0 &&
+				    !bootstrapOnFlashcard && !saveOnFlashcard) {
+					// Leave the top 128 KiB for DSi system data. In
+					// particular 0x0CFFC000 aliases the FAT cache at
+					// 0x02FFC000, where the walker blob used to start.
+					size = 0x0CFE0000u - ce9->cacheAddress;
+				}
 				size -= slot2Size + walkerSize;
 				if (slot2Size) slot2EmuBase = ce9->cacheAddress + size;
 				if (walkerSize) walkerBase = ce9->cacheAddress + size + slot2Size;

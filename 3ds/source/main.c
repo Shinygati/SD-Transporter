@@ -1,4 +1,7 @@
-/* Pokéwalker companion: graphical UI, /roms-only discovery and open-session
+#include "../../shared/walkerclassic.h"
+#include "../../shared/walker_shell.h"
+#include "../../shared/console_audio.h"
+/* Pokéwalker companion: graphical UI, walker discovery and open-session
  * walking (including sleep). GPL-3.0-or-later. */
 #include "lease.h"
 #include "sdrename.h"
@@ -21,9 +24,11 @@
 #ifdef __NDS__
 #define CONFIG_DIR "/data/pokewalker"
 #define ROMS_ROOT "/roms"
+#define STORAGE_ROOT "/"
 #else
 #define CONFIG_DIR "sdmc:/3ds/pokewalker3ds"
 #define ROMS_ROOT "sdmc:/roms"
+#define STORAGE_ROOT "sdmc:/"
 #endif
 #define CONFIG_PATH CONFIG_DIR "/config.ini"
 #define MAX_WALKERS 128
@@ -33,6 +38,8 @@ static char phoneTargets[MAX_WALKERS][512];
 static char recoveryPaths[MAX_WALKERS][512], backupTarget[512];
 static int recoveryCount;
 static char paths[MAX_WALKERS][512], folders[MAX_DIRS][512];
+static char scanRoot[512] = ROMS_ROOT, folderPath[512];
+static int pickerReturn, customScan;
 static uint8_t statuses[MAX_WALKERS], ee[WALKER_FILE_SIZE],
     scratch[WALKER_FILE_SIZE];
 static int folderCount, folderIndex, validateIndex, scanPhase, opened = -1,
@@ -40,8 +47,9 @@ static int folderCount, folderIndex, validateIndex, scanPhase, opened = -1,
 static DIR *directory;
 static uint32_t diskCrc, lastAdvance, nativeFsError, sensorBaseline;
 static int sensorBaselineValid;
-static int phase, hidden, emptyPatch, pendingKind = -1;
-static unsigned reward, gameChoice;
+static int32_t classic[WALKER_CLASSIC_STATE];
+static uint8_t classicPixels[WALKER_CLASSIC_PIXELS], nextClassicPixels[WALKER_CLASSIC_PIXELS];
+static bool audioAvailable;
 static uint64_t deadline;
 static int resultReturn = UI_HOME;
 
@@ -402,6 +410,17 @@ static __attribute__((noinline)) void rememberRecovery(const char *path) {
   for(int i=0;i<recoveryCount;i++)if(!strcmp(recoveryPaths[i],original))return;
   if(recoveryCount<MAX_WALKERS)snprintf(recoveryPaths[recoveryCount++],512,"%s",original);
 }
+static int joinPath(char *out, size_t size, const char *parent, const char *name) {
+  size_t length = strlen(parent);
+  int written = snprintf(out, size, "%s%s%s", parent,
+                         length && parent[length - 1] == '/' ? "" : "/", name);
+  return written >= 0 && (size_t)written < size;
+}
+
+static int dotEntry(const char *name) {
+  return !strcmp(name, ".") || !strcmp(name, "..");
+}
+
 static void scanBegin(void) {
   syncStop();
   recoveryCount=0;ui.phoneCount=ui.phoneCursor=0;
@@ -418,19 +437,19 @@ static void scanBegin(void) {
   folderIndex = validateIndex = scanPhase = 0;
   opened = -1;
   memset(statuses, 0, sizeof(statuses));
-  snprintf(folders[0], 512, "%s", ROMS_ROOT);
+  snprintf(folders[0], sizeof(folders[0]), "%s", scanRoot);
 }
 static void scanStep(void) {
   if (scanPhase == 0) {
     for (int budget = 0; budget < 28; budget++) {
-      if (folderIndex >= folderCount) {
+      if (folderIndex == folderCount) {
         scanPhase = 1;
         ui.validation = 1;
         ui.total = ui.count;
         return;
       }
       if (!directory) {
-        directory = opendir(folders[folderIndex]);
+        directory = opendir(folders[folderIndex % MAX_DIRS]);
         ui.dirs++;
         if (!directory) {
           folderIndex++;
@@ -444,13 +463,12 @@ static void scanStep(void) {
         folderIndex++;
         continue;
       }
-      if (e->d_name[0] == '.')
+      if (dotEntry(e->d_name) ||
+          (!customScan && e->d_name[0] == '.'))
         continue;
       ui.files++;
       char path[512];
-      int n = snprintf(path, sizeof(path), "%s/%s", folders[folderIndex],
-                       e->d_name);
-      if (n < 0 || n >= (int)sizeof(path)) {
+      if (!joinPath(path, sizeof(path), folders[folderIndex % MAX_DIRS], e->d_name)) {
         ui.scanLimited = 1;
         continue;
       }
@@ -460,8 +478,10 @@ static void scanStep(void) {
       if (S_ISLNK(st.st_mode))
         continue;
       if (S_ISDIR(st.st_mode)) {
-        if (folderCount < MAX_DIRS)
-          snprintf(folders[folderCount++], 512, "%s", path);
+        if (folderCount - folderIndex < MAX_DIRS) {
+          snprintf(folders[folderCount % MAX_DIRS], sizeof(folders[0]), "%s", path);
+          folderCount++;
+        }
         else
           ui.scanLimited = 1;
       } else if(S_ISREG(st.st_mode) && ends(e->d_name,".nds")) {
@@ -469,10 +489,12 @@ static void scanStep(void) {
         int hgss=rom && fread(header,1,sizeof(header),rom)==sizeof(header) && (!memcmp(header+12,"IPK",3)||!memcmp(header+12,"IPG",3));
         if(rom)fclose(rom);
         if(hgss && ui.phoneCount<MAX_WALKERS){
-          char target[512];size_t parent=strlen(folders[folderIndex]),stem=strlen(e->d_name)-4;
-          if(snprintf(target,sizeof(target),"%s/saves/%.*s.walker",folders[folderIndex],(int)stem,e->d_name)<(int)sizeof(target)){
-            (void)parent;snprintf(phoneTargets[ui.phoneCount++],512,"%s",target);
-          }
+          char target[512], filename[512];
+          size_t stem = strlen(e->d_name) - 4;
+          int length = snprintf(filename, sizeof(filename), "saves/%.*s.walker", (int)stem, e->d_name);
+          if (length >= 0 && length < (int)sizeof(filename) &&
+              joinPath(target, sizeof(target), folders[folderIndex % MAX_DIRS], filename))
+            snprintf(phoneTargets[ui.phoneCount++], sizeof(phoneTargets[0]), "%s", target);
         }
       } else if(S_ISREG(st.st_mode) && (ends(e->d_name,".bak") || ends(e->d_name,".tmp") || ends(e->d_name,".replace-old"))) {
         rememberRecovery(path);
@@ -504,6 +526,96 @@ static void scanStep(void) {
     }
   }
 }
+static int compareFolders(const void *left, const void *right) {
+  return strcasecmp((const char *)left, (const char *)right);
+}
+
+static int browseFolder(const char *path) {
+  DIR *listing = opendir(path);
+  if (!listing) {
+    notify("Could not open that folder.");
+    return 0;
+  }
+  snprintf(folderPath, sizeof(folderPath), "%s", path);
+  ui.folderCount = ui.folderCursor = ui.folderLimited = 0;
+  ui.folderRevision++;
+  struct dirent *entry;
+  while ((entry = readdir(listing))) {
+    if (dotEntry(entry->d_name))
+      continue;
+    char child[512];
+    if (!joinPath(child, sizeof(child), folderPath, entry->d_name)) {
+      ui.folderLimited = 1;
+      continue;
+    }
+    struct stat info;
+    if (lstat(child, &info) || !S_ISDIR(info.st_mode))
+      continue;
+    if (ui.folderCount == MAX_DIRS) {
+      ui.folderLimited = 1;
+      break;
+    }
+    snprintf(folders[ui.folderCount++], sizeof(folders[0]), "%s", child);
+  }
+  closedir(listing);
+  qsort(folders, ui.folderCount, sizeof(folders[0]), compareFolders);
+  return 1;
+}
+
+static void openFolderPicker(void) {
+  int previous = ui.screen;
+  const char *initial = customScan ? scanRoot : STORAGE_ROOT;
+  if (!browseFolder(initial)) {
+    if (!strcmp(initial, STORAGE_ROOT) || !browseFolder(STORAGE_ROOT))
+      return;
+  }
+  if (directory) {
+    closedir(directory);
+    directory = 0;
+  }
+  pickerReturn = previous;
+  ui.screen = UI_FOLDER_PICKER;
+}
+
+static void folderPickerInput(u32 down) {
+  if (down & KEY_X) {
+    if (pickerReturn == UI_SCAN)
+      scanBegin();
+    else
+      ui.screen = UI_LIST;
+    return;
+  }
+  if (down & (KEY_START | KEY_Y)) {
+    customScan = (down & KEY_Y) == 0;
+    snprintf(scanRoot, sizeof(scanRoot), "%s", customScan ? folderPath : ROMS_ROOT);
+    scanBegin();
+    return;
+  }
+  if (down & KEY_B) {
+    size_t rootLength = strlen(STORAGE_ROOT);
+    if (strlen(folderPath) <= rootLength)
+      return;
+    char parent[sizeof(folderPath)];
+    snprintf(parent, sizeof(parent), "%s", folderPath);
+    char *slash = strrchr(parent, '/');
+    size_t end = (size_t)(slash - parent);
+    parent[end < rootLength ? rootLength : end] = 0;
+    browseFolder(parent);
+    return;
+  }
+  if ((down & KEY_UP) && ui.folderCursor > 0)
+    ui.folderCursor--;
+  if ((down & KEY_DOWN) && ui.folderCursor + 1 < ui.folderCount)
+    ui.folderCursor++;
+  if ((down & KEY_L) && ui.folderCursor > 0)
+    ui.folderCursor = ui.folderCursor >= 6 ? ui.folderCursor - 6 : 0;
+  if ((down & KEY_R) && ui.folderCursor + 1 < ui.folderCount)
+    ui.folderCursor = ui.folderCursor + 6 < ui.folderCount
+                          ? ui.folderCursor + 6 : ui.folderCount - 1;
+  if ((down & KEY_A) && ui.folderCount)
+    browseFolder(folders[ui.folderCursor]);
+}
+
 static void openWalker(void) {
   if (!ui.count)
     return;
@@ -533,7 +645,6 @@ static void openWalker(void) {
   ui.saveError = 0;
   ui.screen = UI_HOME;
   ui.selection = 0;
-  pendingKind = -1;
   /* Rebase the clock before any accrual: closed-app time earns nothing. */
   memcpy(scratch, ee, sizeof(ee));
   walkerResume(ee, now(), ui.secondsPerStep);
@@ -584,209 +695,53 @@ static void startPhoneSync(void) {
     snprintf(ui.syncStatus, sizeof(ui.syncStatus),
              "Could not start Wi-Fi. Check console network settings.");
 }
-static void endGame(const char *a, const char *b) {
-  dirty = 1;
-  refresh();
-  result(a, b);
-}
-static int ready(void) {
-  if (ui.phoneLocked) {
-    ui.screen = UI_LOCKED;
-    return 0;
-  }
-  refresh();
-  if (!ui.info.registered || !ui.info.hasPokemon) {
-    result("Send a Pokémon first.",
-           "Send a Pokémon on a stroll from HGSS first.");
-    return 0;
-  }
-  if (ee[0x156 + 23] & 1) {
-    result("Special-event course active.",
-           "Event gift transfers are not supported yet. Normal route games "
-           "remain available "
-           "after changing course in HGSS.");
-    return 0;
-  }
-  return !ui.saveError;
-}
-static void nextRustle(void) {
-  phase = 0;
-  ui.activePatch = -1;
-  ui.progress = 0;
-  deadline = osGetTime() + 500 + (walkerRandom(ee) % 900);
-  dirty = 1;
-}
-static void radarStart(void) {
-  if (!ready())
-    return;
-  unsigned visitor = walkerPendingEncounter(ee);
-  if (visitor) {
-    walkerClearEncounter(ee);
+static void classicStep(int button) {
+  int32_t previous[WALKER_CLASSIC_STATE];
+  memcpy(previous, classic, sizeof(previous));
+  uint32_t ms = (uint32_t)osGetTime();
+  walkerClassicInput(ee, classic, button, now(), ms, ui.expandedItems);
+  ui.classicContrast = classic[20];
+  if (classic[10] || classic[19] != previous[19])
+    consoleAudioPlay(ee, classic[10], classic[19]);
+  classic[10] = 0;
+  if (memcmp(previous, classic, sizeof(previous)))
     dirty = 1;
-    walkerBattleStart(&ui.battle, visitor - 1);
-    ui.screen = UI_BATTLE;
-    ui.selection = 0;
-    deadline = osGetTime() + 200;
-    message("Your visitor is here! This encounter costs no watts.");
+  if (classic[0] == 8 && classic[2] == 1) {
+    startPhoneSync();
     return;
   }
-  if (ui.info.watts < 10) {
-    result("Poké Radar needs 10 watts.",
-           "Keep strolling to earn another watt every 20 steps.");
-    return;
+  if (classic[0] == 10) {
+    classic[0] = 0;
+    notify("Use Phone sync to connect a phone companion.");
   }
-  WalkerEncounter encounter;
-  if (!walkerChooseEncounter(ee, &encounter)) {
-    result("This route has no usable encounters.",
-           "Start a new stroll from HGSS to refresh the route data.");
-    return;
+  walkerClassicFrame(ee, classic, nextClassicPixels, ms);
+  if (memcmp(classicPixels, nextClassicPixels, sizeof(classicPixels))) {
+    memcpy(classicPixels, nextClassicPixels, sizeof(classicPixels));
+    ui.classicRevision++;
   }
-  walkerSpend(ee, 10);
-  dirty = 1;
-  gameChoice = encounter.index;
-  ui.round = 0;
-  ui.rounds = 3 - (int)encounter.index + ((walkerRandom(ee) >> 3) & 1);
-  ui.selectedPatch = 0;
-  ui.screen = UI_RADAR;
-  message("Wait for a rustle, then choose that patch.");
-  nextRustle();
 }
-static void dowseStart(void) {
-  if (!ready())
-    return;
-  if (ui.info.watts < 3) {
-    result("Dowsing needs 3 watts.",
-           "Keep strolling to earn another watt every 20 steps.");
-    return;
-  }
-  if (!walkerChooseItemEx(ee, &reward, ui.expandedItems)) {
-    result("This route has no usable item data.",
-           "Start a new stroll from HGSS to refresh the route data.");
-    return;
-  }
-  walkerSpend(ee, 3);
-  hidden = walkerRandom(ee) % 6;
-  emptyPatch = -1;
-  ui.selectedPatch = 0;
-  ui.attempts = 2;
-  ui.activePatch = -1;
-  dirty = 1;
-  ui.screen = UI_DOWSE;
-  message("An item is hidden in one of these six patches.");
-}
-static void rewardStore(int kind, unsigned which) {
-  int ok = kind ? walkerStoreItem(ee, which, -1, now())
-                : walkerStorePokemon(ee, which, -1, now());
-  dirty = 1;
-  if (ok < 0) {
-    pendingKind = kind;
-    reward = which;
-    ui.replaceKind = kind;
-    ui.selection = 0;
-    ui.screen = UI_REPLACE;
-    char text[160];
-    snprintf(text,sizeof(text),kind?"Found %s. Choose a slot, or B to leave it.":"Caught %s! Choose a slot, or B to leave it.",kind?itemName(walkerRouteItemId(ee,which)):speciesName(walkerRoutePokemonId(ee,which)));
-    message(text);
-    return;
-  }
-  if (ok) {
-    char title[96];
-    snprintf(title,sizeof(title),kind?"You found %s!":"You caught %s!",
-             kind?itemName(walkerRouteItemId(ee,which)):speciesName(walkerRoutePokemonId(ee,which)));
-    endGame(title,"In your pack. Press START to save before returning to HGSS.");
-  } else
-    endGame("The reward data was not usable.", "No Pokémon or item was added.");
-}
-static void radarPick(void) {
-  if (phase != 1)
-    return;
-  if (ui.selectedPatch != ui.activePatch) {
-    if (!ui.round) {
-      message("Nothing here. Try the rustling patch!");
-      nextRustle();
-    } else
-      endGame("It got away!", "Try another Poké Radar search.");
-    return;
-  }
-  ui.round++;
-  if (ui.round >= ui.rounds) {
-    walkerBattleStart(&ui.battle, gameChoice);
-    ui.screen = UI_BATTLE;
-    ui.selection = 0;
-    message("Attack, evade, or throw a Poké Ball.");
-    deadline = osGetTime() + 200;
-    return;
-  }
-  message(ui.round > 1 ? "!! Something rare is close!"
-                       : "! Keep following the rustles.");
-  nextRustle();
-}
-static void dowsePick(void) {
-  if (ui.selectedPatch == emptyPatch) {
-    message("You already searched that patch.");
-    return;
-  }
-  if (ui.selectedPatch == hidden) {
-    rewardStore(1, reward);
-    return;
-  }
-  emptyPatch = ui.selectedPatch;
-  ui.activePatch = emptyPatch;
-  ui.attempts--;
-  if (!ui.attempts) {
-    endGame("Nothing was found this time.",
-            "The item stayed hidden. Try again on your next stroll.");
-    return;
-  }
-  int a = ui.selectedPatch, b = hidden,
-      dist = abs(a % 3 - b % 3) + abs(a / 3 - b / 3);
-  message(dist <= 1 ? "It's near! One attempt left."
-                    : "It's far away… One attempt left.");
-}
-static void battleAction(void) {
-  if (osGetTime() < deadline)
-    return;
-  walkerBattleAction(ee, &ui.battle, ui.selection);
-  dirty = 1;
-  deadline = osGetTime() + 350;
-  const char *lines[] = {"You attacked! The wild Pokémon replied.",
-                         "It dodged, then attacked!",
-                         "A critical hit! It attacked back.",
-                         "A stare-down…",
-                         "The Pokémon fled!",
-                         "Caught!",
-                         "Almost had it…",
-                         "You evaded and counter-attacked!",
-                         "Your partner was defeated."};
-  message(lines[ui.battle.lastOutcome]);
-  if (ui.battle.caught) {
-    rewardStore(0, ui.battle.encounter);
-    return;
-  }
-  if (ui.battle.finished)
-    endGame(lines[ui.battle.lastOutcome],
-            ui.battle.lastOutcome == 8
-                ? "Up to 10 watts were lost. Your partner is still safe."
-                : "Your partner is safe. Try another search.");
-}
+
 static void homeAction(void) {
   switch (ui.selection) {
   case 0:
-    radarStart();
+    if (ui.phoneLocked || ui.saveError) break;
+    if (!walkerCanWalk(ee)) {
+      result("Send a Pokémon first.", "Start a stroll from HeartGold or SoulSilver.");
+      break;
+    }
+    memset(classic, 0, sizeof(classic));
+    classic[19] = 2;
+    classic[20] = 1;
+    ui.classicPixels = classicPixels;
+    ui.screen = UI_CLASSIC;
+    classicStep(-1);
+    if (!audioAvailable)
+      notify("Audio unavailable. Check /3ds/dspfirm.cdc.");
     break;
   case 1:
-    dowseStart();
-    break;
-  case 2:
-    ui.screen = UI_PACK;
-    break;
-  case 3:
-    ui.screen = UI_CARD;
-    break;
-  case 4:
     updateSteps(1);
     break;
-  case 5:
+  case 2:
     ui.screen = UI_SETTINGS;
     ui.selection = 0;
     break;
@@ -844,12 +799,6 @@ static void closeWalker(void) {
 static void back(void) {
   if (ui.saveError) {
     message("Save failed. Y retries; X offers to discard changes.");
-    return;
-  }
-  if (ui.screen == UI_REPLACE) {
-    pendingKind = -1;
-    endGame("You left the new reward behind.",
-            "The existing pack was kept unchanged.");
     return;
   }
   if (ui.screen == UI_HOME) {
@@ -1135,6 +1084,14 @@ static void input(u32 down) {
       requestExit();
     return;
   }
+  if (ui.screen == UI_FOLDER_PICKER) {
+    folderPickerInput(down);
+    return;
+  }
+  if ((ui.screen == UI_LIST || ui.screen == UI_SCAN) && (down & KEY_X)) {
+    openFolderPicker();
+    return;
+  }
   if (down & KEY_START) {
     requestExit();
     return;
@@ -1178,8 +1135,6 @@ static void input(u32 down) {
       load(ui.cursor);
     if (down & KEY_A)
       openWalker();
-    if (down & KEY_X)
-      scanBegin();
     return;
   }
   if (ui.screen == UI_RESULT) {
@@ -1197,28 +1152,30 @@ static void input(u32 down) {
     back();
     return;
   }
-  if (ui.screen == UI_HOME) {
-    if ((down & KEY_LEFT) && ui.selection % 2)
-      ui.selection--;
-    if ((down & KEY_RIGHT) && !(ui.selection % 2))
-      ui.selection++;
-    if ((down & KEY_UP) && ui.selection >= 2)
-      ui.selection -= 2;
-    if ((down & KEY_DOWN) && ui.selection < 4)
-      ui.selection += 2;
+  if (ui.screen == UI_CLASSIC) {
+    int button = (down & KEY_LEFT) ? 0 : (down & KEY_A) ? 1 : (down & KEY_RIGHT) ? 2 : -1;
     if (down & KEY_TOUCH) {
       touchPosition p;
       hidTouchRead(&p);
-      if (p.py >= 44 && p.py < 190) {
-        int row = (p.py - 44) / 50, col = p.px >= 166;
-        if (row < 3) {
-          ui.selection = row * 2 + col;
-          down |= KEY_A;
-        }
+      WalkerShellLayout shell = walkerShellLayout(320, 240);
+      int pressed = walkerShellButton(&shell, p.px, p.py);
+      if (pressed >= 0) button = pressed;
+    }
+    classicStep(button);
+    return;
+  }
+  if (ui.screen == UI_HOME) {
+    if ((down & (KEY_LEFT | KEY_UP)) && ui.selection > 0) ui.selection--;
+    if ((down & (KEY_RIGHT | KEY_DOWN)) && ui.selection < 2) ui.selection++;
+    if (down & KEY_TOUCH) {
+      touchPosition p;
+      hidTouchRead(&p);
+      if (p.py >= 44 && p.py < 194) {
+        ui.selection = (p.py - 44) / 50;
+        down |= KEY_A;
       }
     }
-    if (down & KEY_A)
-      homeAction();
+    if (down & KEY_A) homeAction();
   } else if (ui.screen == UI_SETTINGS) {
     if(down & KEY_SELECT){ui.screen=UI_REWARD_SETTINGS;return;}
     if(down & KEY_X){openBackups();return;}
@@ -1246,88 +1203,14 @@ static void input(u32 down) {
       changeRate(1);
     if (ui.selection == 3 && (down & KEY_A))
       startPhoneSync();
-  } else if (ui.screen == UI_RADAR || ui.screen == UI_DOWSE) {
-    int cols = ui.screen == UI_RADAR ? 2 : 3, n = cols * 2;
-    if ((down & KEY_LEFT) && ui.selectedPatch % cols)
-      ui.selectedPatch--;
-    if ((down & KEY_RIGHT) && ui.selectedPatch % cols < cols - 1)
-      ui.selectedPatch++;
-    if ((down & KEY_UP) && ui.selectedPatch >= cols)
-      ui.selectedPatch -= cols;
-    if ((down & KEY_DOWN) && ui.selectedPatch < cols)
-      ui.selectedPatch += cols;
-    if (down & KEY_TOUCH) {
-      touchPosition p;
-      hidTouchRead(&p);
-      if (p.py >= 57 && p.py < 181) {
-        int row = (p.py - 57) / 62, col = (p.px - 14) / (cols == 2 ? 155 : 101);
-        if (p.px >= 14 && col >= 0 && col < cols && row < 2) {
-          int index = row * cols + col;
-          if (index < n) {
-            ui.selectedPatch = index;
-            down |= KEY_A;
-          }
-        }
-      }
-    }
-    if (down & KEY_A) {
-      if (ui.screen == UI_RADAR)
-        radarPick();
-      else
-        dowsePick();
-    }
-  } else if (ui.screen == UI_BATTLE) {
-    if ((down & KEY_LEFT) && ui.selection > 0)
-      ui.selection--;
-    if ((down & KEY_RIGHT) && ui.selection < 2)
-      ui.selection++;
-    if (down & KEY_TOUCH) {
-      touchPosition p;
-      hidTouchRead(&p);
-      if (p.py >= 57 && p.py < 124) {
-        ui.selection = p.px / 106;
-        if (ui.selection > 2)
-          ui.selection = 2;
-        down |= KEY_A;
-      }
-    }
-    if (down & KEY_A)
-      battleAction();
-  } else if (ui.screen == UI_REPLACE) {
-    if ((down & (KEY_LEFT|KEY_UP)) && ui.selection > 0)
-      ui.selection--;
-    if ((down & (KEY_RIGHT|KEY_DOWN)) && ui.selection < 2)
-      ui.selection++;
-    if (down & KEY_TOUCH) {
-      touchPosition p;
-      hidTouchRead(&p);
-      if (p.py >= 48 && p.py < 174) {
-        ui.selection = (p.py-48) / 44;
-        if (ui.selection > 2)
-          ui.selection = 2;
-        down |= KEY_A;
-      }
-    }
-    if ((down & KEY_A) && pendingKind >= 0) {
-      int ok = pendingKind
-                   ? walkerStoreItem(ee, reward, ui.selection, now())
-                   : walkerStorePokemon(ee, reward, ui.selection, now());
-      int kind=pendingKind;
-      pendingKind = -1;
-      if (ok > 0) {
-        dirty=1;
-        char title[96];
-        snprintf(title,sizeof(title),kind?"You found %s!":"You caught %s!",
-                 kind?itemName(walkerRouteItemId(ee,reward)):speciesName(walkerRoutePokemonId(ee,reward)));
-        endGame(title,"The reward replaced your selected slot. Press START to save.");
-      }
-    }
   }
 }
 int main(void) {
   if (!uiInit())
     return 1;
+  audioAvailable = consoleAudioInit();
   ui.paths = paths;ui.phonePaths=phoneTargets;
+  ui.folderPaths = folders;ui.folderPath = folderPath;ui.scanRoot = scanRoot;
   ui.statuses = statuses;
   ui.ee = ee;
 #ifndef __NDS__
@@ -1341,37 +1224,22 @@ int main(void) {
   if (!ndsStorageReady())
     result(
         "Storage unavailable.",
-        "Launch with working DLDI/SD access. The app needs access to /roms.");
+        "Launch with working DLDI/SD access. The app needs access to your storage.");
 #endif
-  static const unsigned windows[4] = {64, 48, 32, 24};
   while (aptMainLoop() && !quit) {
     hidScanInput();
     u32 down = hidKeysDown() | (hidKeysDownRepeat() &
                                 (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT));
+    bool wasClassic = ui.screen == UI_CLASSIC;
     input(down);
+    if (wasClassic && ui.screen != UI_CLASSIC)
+      consoleAudioStop();
     /* START has already saved and verified. Do not advance walking or start
      * another write after the user has requested a successful exit. */
     if (quit)
       break;
     if (ui.screen == UI_SCAN)
       scanStep();
-    if (ui.screen == UI_RADAR) {
-      uint64_t t = osGetTime();
-      if (phase == 0 && t >= deadline) {
-        phase = 1;
-        ui.activePatch = walkerRandom(ee) % 4;
-        dirty = 1;
-        deadline =
-            t + (uint64_t)windows[ui.round < 4 ? ui.round : 3] * 1000 / 30;
-      }
-      if (phase == 1) {
-        uint64_t span =
-            (uint64_t)windows[ui.round < 4 ? ui.round : 3] * 1000 / 30;
-        ui.progress = t < deadline ? (float)(deadline - t) / span : 0;
-        if (t >= deadline)
-          endGame("The rustling stopped…", "Try another Poké Radar search.");
-      }
-    }
     syncPoll();
     if (ui.screen == UI_SYNC) {
       snprintf(ui.syncAddress, sizeof(ui.syncAddress), "%s", syncAddress());
@@ -1412,6 +1280,7 @@ int main(void) {
   if (ui.sensorAvailable)
     ptmuExit();
 #endif
+  consoleAudioExit();
   uiExit();
   return 0;
 }

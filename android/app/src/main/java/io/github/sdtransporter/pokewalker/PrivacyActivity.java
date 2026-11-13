@@ -8,6 +8,7 @@ import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +19,15 @@ public final class PrivacyActivity extends Activity {
         super.onCreate(state);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
         Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->finish());root.addView(back);
+        boolean showCredits = getIntent().getBooleanExtra("credits", false);
+        if (showCredits) {
+            TextView version = new TextView(this);
+            version.setText("Version " + BuildConfig.VERSION_NAME);
+            version.setTextSize(16);
+            int padding = (int)(16 * getResources().getDisplayMetrics().density);
+            version.setPadding(padding, padding / 2, padding, padding / 2);
+            root.addView(version);
+        }
         WebView page=new WebView(this);page.getSettings().setJavaScriptEnabled(false);
         page.getSettings().setAllowFileAccess(false);page.getSettings().setAllowContentAccess(false);
         page.setWebViewClient(new WebViewClient(){
@@ -31,7 +41,7 @@ public final class PrivacyActivity extends Activity {
             }
         });
         root.addView(page,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
-        String asset=getIntent().getBooleanExtra("licence",false)?"licence.html":getIntent().getBooleanExtra("credits",false)?"credits.html":"privacy.html";
+        String asset=getIntent().getBooleanExtra("licence",false)?"licence.html":showCredits?"credits.html":"privacy.html";
         try(InputStream in=getAssets().open(asset);ByteArrayOutputStream out=new ByteArrayOutputStream()) {
             byte[] block=new byte[4096];int n;while((n=in.read(block))!=-1)out.write(block,0,n);
             page.loadDataWithBaseURL(null,new String(out.toByteArray(),StandardCharsets.UTF_8),"text/html","UTF-8",null);

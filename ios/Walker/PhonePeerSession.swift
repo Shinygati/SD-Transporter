@@ -9,6 +9,7 @@ import Combine
     @Published var phones: [NearbyPhone] = []
     @Published var phase = "connecting"
     @Published var selected = 0
+    @Published private(set) var visitPlayback: WalkerVisitPlayback?
     let battle: Bool
     private let model: WalkerModel
     private let radio = PeerBluetooth()
@@ -94,10 +95,11 @@ import Combine
                 remoteReady=true;if host { try startIfReady() } else { message="Other player is ready" }
             case "visit":
                 guard !host,!battle,localReady else { throw problem("Unexpected visit.") }
-                try model.nearbyVisit(remote);try send("visited");phase="complete";message="Visit complete. Gifts saved."
+                visitPlayback = try model.nearbyVisit(remote)
+                try send("visited");phase="complete";message=visitResultText
             case "visited":
                 guard host,!battle,started else { throw problem("Unexpected visit confirmation.") }
-                phase="complete";message="Visit complete. Gifts saved."
+                phase="complete";message=visitResultText
             case "start":
                 guard !host,battle,localReady,!started,let seed=value["seed"] as? Int,let exact=Int32(exactly:seed) else { throw problem("Unexpected battle start.") }
                 try model.nearbyPay(session:session,peer:remoteKey)
@@ -126,6 +128,7 @@ import Combine
         } catch { fail(error) }
     }
     private var offerText: String { battle ? ("Both players must accept the 30-watt entry cost. "+(localExpanded && remoteExpanded ? "Expanded rewards enabled on both phones.":"Course items only.")):"Ready for a visit" }
+    private var visitResultText: String { visitPlayback == nil ? "This Pokéwalker already received today's gift.":"Visit complete. Gifts saved." }
     var rewardsDiffer: Bool { battle && localExpanded != remoteExpanded }
     var canAccept: Bool { !closed && phase=="offer" && !localReady }
     func accept() {
@@ -137,7 +140,7 @@ import Combine
     }
     private func startIfReady() throws {
         guard !started,localReady,remoteReady,let remote else { return };started=true
-        if !battle { try model.nearbyVisit(remote);phase="waiting";message="Saving both gifts";try send("visit");return }
+        if !battle { visitPlayback = try model.nearbyVisit(remote);phase="waiting";message="Saving both gifts";try send("visit");return }
         try model.nearbyPay(session:session,peer:remoteKey)
         let seed=Int32.random(in:Int32.min...Int32.max);board=WalkerCore.friendlyStart(local,remote,seed:seed)
         phase="waiting";message="Starting battle";try send("start",["seed":Int(seed)])

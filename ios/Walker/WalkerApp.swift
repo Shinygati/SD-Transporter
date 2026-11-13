@@ -73,12 +73,12 @@ struct WalkerHome: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("iPhone Pokewalker").font(.largeTitle.bold())
                     WalkerPicture(data: model.state.returnPending || model.state.revoked ? nil : model.state.data).frame(height: 300)
-                        .contentShape(Rectangle()).onTapGesture { if model.usable { startClassicOnly=true;classicFirstButton = -1;classicPresented = true } }
+                        .contentShape(Rectangle()).onTapGesture { if model.usable { openClassic() } }
                         .accessibilityAddTraits(.isButton).accessibilityLabel("Pokewalker. Open original-style controls")
                     HStack {
                         ForEach(0..<3) { key in
                             Button(key==0 ? "◀":key==1 ? "●":"▶") {
-                                startClassicOnly=false;classicFirstButton=Int32(key);classicPresented=true
+                                openClassic(button: Int32(key))
                             }.disabled(!model.usable)
                         }
                     }
@@ -94,13 +94,6 @@ struct WalkerHome: View {
                     if model.storageBlocked { Button("Reopen saved state", action: model.retryStorage) }
                     WalkerDetailsView()
                     NavigationLink("Walker profiles · \(model.profileName)", icon:6) { ProfilesView() }.disabled(model.busy)
-                    if model.active && !model.state.returnPending {
-                        NavigationLink(model.info[11] > 0 ? "Wild visitor · free battle" : "Poké Radar · 10 watts") { RadarView() }.disabled(!model.usable || model.info[1] == 0)
-                        NavigationLink("Dowsing · 3 watts", icon:2) { DowsingView() }.disabled(!model.usable || model.info[1] == 0)
-                        NavigationLink("Your pack", icon:3) { PackView() }.disabled(!model.usable)
-                        NavigationLink("Trainer card", icon:4) { TrainerView() }.disabled(!model.usable)
-                    }
-                    NavigationLink("Connect another Pokewalker", icon:18) { ConnectionChoiceView() }.disabled(!model.usable)
                     if (model.state.battleRewardChoice ?? -1)>=0 { NavigationLink("Claim battle reward",icon:3) { BattleRewardView() }.disabled(!model.usable) }
                     NavigationLink("Settings", icon:5) { SettingsView() }
                     NavigationLink("Console Wi-Fi sync", icon:8) { SyncView() }
@@ -108,8 +101,16 @@ struct WalkerHome: View {
                 }.padding()
             }.background(WalkerTheme.background).buttonStyle(WalkerButton()).tint(WalkerTheme.mint)
         }
-        .sheet(isPresented: $classicPresented) { ClassicWalkerView(initiallyClassic:startClassicOnly,initialButton:classicFirstButton).environmentObject(model) }
+        .sheet(isPresented: $classicPresented) {
+            ClassicWalkerView(initiallyClassic: startClassicOnly, initialButton: classicFirstButton)
+                .environmentObject(model)
+        }
         .onReceive(clock) { _ in model.tick(); ticks += 1; if ticks % 30 == 0 { model.refreshMotion() } }
+    }
+    private func openClassic(button: Int32 = -1) {
+        classicFirstButton = button
+        startClassicOnly = button < 0
+        classicPresented = true
     }
 }
 
@@ -204,32 +205,6 @@ struct WalkerPicture: View {
     }
 }
 
-struct GrassPatch: View {
-    let number: Int
-    var rustling = false
-    var searched = false
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Text(rustling ? "!" : " ").font(.title.bold()).foregroundStyle(WalkerTheme.gold)
-                Canvas { context, size in
-                    for row in 0..<3 { for column in 0..<5 {
-                        let x = CGFloat(column) * size.width / 5 + 4
-                        let y = size.height - CGFloat(row) * 12
-                        var path = Path(); path.move(to: CGPoint(x: x, y: y))
-                        path.addLine(to: CGPoint(x: x + (rustling ? 12 : 8), y: y - 24))
-                        path.addLine(to: CGPoint(x: x + 18, y: y)); path.closeSubpath()
-                        context.fill(path, with: .color(rustling ? WalkerTheme.gold : WalkerTheme.mint))
-                    } }
-                }.frame(height: 58)
-                Text(searched ? "Searched" : "Patch \(number)").font(.callout)
-            }.opacity(searched ? 0.35 : 1)
-        }.buttonStyle(WalkerButton()).disabled(searched)
-            .accessibilityLabel("Patch \(number)\(rustling ? ", rustling" : "")\(searched ? ", searched" : "")")
-    }
-}
-
 struct SettingsView: View {
     @AppStorage("menuHoldMilliseconds") private var menuHoldMilliseconds = 1000
     @EnvironmentObject var model: WalkerModel
@@ -274,6 +249,9 @@ struct SettingsView: View {
                 if model.state.data != nil { Button("Delete active walker", role: .destructive) { confirmActive = true }.disabled(model.busy) }
             }
             Section("About") {
+                if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                    LabeledContent("Version", value: version)
+                }
                 NavigationLink("Privacy policy", icon:14) { PolicyView(name: "privacy") }
                 NavigationLink("Credits", icon:15) { PolicyView(name: "credits") }
                 NavigationLink("GNU GPL licence", icon:15) { PolicyView(name: "licence") }
@@ -404,11 +382,37 @@ struct ProfilesView: View {
     }
     func stop() { player?.stop(); player = nil }
 }
+struct WalkerVisitDisplay: View {
+    @EnvironmentObject var model: WalkerModel
+    @StateObject private var audio = ClassicAudio()
+    let playback: WalkerVisitPlayback
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.12)) { _ in
+            if let pixels = playback.frame() {
+                WalkerLCDShell(pixels: pixels, contrast: model.state.classicContrast ?? 1)
+                    .frame(height: 340)
+                    .accessibilityLabel("Pokéwalker visit display")
+            }
+        }
+        .task(id: playback.id) {
+            do {
+                try await Task.sleep(for: .seconds(4))
+                audio.play(model.classicSound(9), volume: model.state.classicVolume ?? 2)
+                try await Task.sleep(for: .seconds(4))
+                audio.play(model.classicSound(6), volume: model.state.classicVolume ?? 2)
+            } catch { audio.stop() }
+        }
+        .onDisappear { audio.stop() }
+    }
+}
 struct ProfileVisitView: View {
     @EnvironmentObject var model: WalkerModel
     @State private var target: String?
+    @State private var playback: WalkerVisitPlayback?
     var body: some View {
         List {
+            if let playback { WalkerVisitDisplay(playback: playback) }
             Text("The Pokémon play together and each Pokewalker receives a gift. The same two devices can meet once per day. Partners remain in their own profiles.")
             ForEach(model.profiles.filter { $0.id != model.selectedProfileID }) { profile in
                 Button(profile.name) { target = profile.id }.disabled(!model.usable)
@@ -416,7 +420,7 @@ struct ProfileVisitView: View {
             if !model.message.isEmpty { Text(model.message) }
         }.navigationTitle("Connect another Pokewalker")
             .confirmationDialog("Connect these two profiles? Both gifts are saved together before success.", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } }), titleVisibility: .visible) {
-                Button("Connect", icon:18) { if let target { model.visit(target) }; target = nil }
+                Button("Connect", icon:18) { if let target { playback = model.visit(target) }; target = nil }
             }
     }
 }
@@ -459,7 +463,15 @@ struct ClassicWalkerView: View {
                 .sheet(isPresented:$showPeers) { NavigationStack { ConnectionChoiceView() }.environmentObject(model) }
                 .sheet(isPresented:$showConsole) { NavigationStack { SyncView() }.environmentObject(model) }
         }
-        .onAppear { if !initialized { initialized=true;classicOnly=initiallyClassic;profile=model.selectedProfileID;values[19]=Int32(model.state.classicVolume ?? 2);values[20]=Int32(model.state.classicContrast ?? 1);press(initialButton) } }
+        .onAppear {
+            guard !initialized else { return }
+            initialized = true
+            classicOnly = initiallyClassic
+            profile = model.selectedProfileID
+            values[19] = Int32(model.state.classicVolume ?? 2)
+            values[20] = Int32(model.state.classicContrast ?? 1)
+            press(initialButton)
+        }
         .onReceive(clock) { _ in if !showPeers && !showConsole { press(-1) } }
         .onDisappear { audio.stop() }
     }

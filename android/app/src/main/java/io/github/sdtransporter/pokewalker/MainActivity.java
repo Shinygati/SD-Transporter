@@ -23,6 +23,8 @@ public final class MainActivity extends Activity {
     private Runnable pendingPeerPermission;
     private int[] classic=new int[40];
     private byte[] classicPixels;
+    private int[] visitReward;
+    private long visitStarted;
     private String classicProfile="";
     private boolean classicOnly=true;
     private int pressedImageButton=-1;
@@ -123,18 +125,33 @@ public final class MainActivity extends Activity {
         }
     }
     private void stopClassicAudio(){if(classicAudio!=null){classicAudio.release();classicAudio=null;}}
+    private void playClassicScore(int score,int volume){
+        if(volume<=0)return;
+        short[] pcm=Native.classicSound(state.data,score);stopClassicAudio();
+        if(pcm!=null&&pcm.length>0)try{
+            classicAudio=new android.media.AudioTrack.Builder().setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_GAME).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).setAudioFormat(new android.media.AudioFormat.Builder().setSampleRate(22050).setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT).build()).setTransferMode(android.media.AudioTrack.MODE_STATIC).setBufferSizeInBytes(pcm.length*2).build();
+            classicAudio.setVolume(volume==1?.25f:.5f);classicAudio.write(pcm,0,pcm.length);classicAudio.play();
+        }catch(RuntimeException ex){stopClassicAudio();}
+    }
+    private void showVisit(int[] reward){
+        if(reward==null||visitReward==reward)return;
+        visitReward=reward;
+        visitStarted=SystemClock.elapsedRealtime();
+        picture.invalidate();
+        handler.postDelayed(()->playVisitScore(reward,9),4000);
+        handler.postDelayed(()->playVisitScore(reward,6),8000);
+    }
+    private void playVisitScore(int[] reward,int score){
+        synchronized(WalkerStore.LOCK){
+            if(!isDestroyed()&&visitReward==reward&&(page.equals("visit")||page.equals("peer")))
+                playClassicScore(score,state.classicVolume);
+        }
+    }
     private void openClassic(){openClassic(true);}
     private void openClassic(boolean only){
         synchronized(WalkerStore.LOCK){if(!owned())return;classicProfile=state.profileId;classic=new int[40];classic[19]=state.classicVolume;classic[20]=state.classicContrast;}
         classicOnly=only;generation++;page="classic";renderClassicControls();
         handler.removeCallbacks(classicClock);handler.post(classicClock);
-    }
-    private void openClassicActivity(int activity){
-        openClassic(true);
-        if(!page.equals("classic"))return;
-        classicPress(2); // HOME -> MENU, selection 0 (Radar)
-        if(activity==1)classicPress(2); // MENU -> selection 1 (Dowsing)
-        classicPress(1); // Open the selected activity
     }
     private void renderClassicControls(){
         panel.removeAllViews();appTitle.setVisibility(classicOnly?View.GONE:View.VISIBLE);stats.setVisibility(classicOnly?View.GONE:View.VISIBLE);
@@ -174,13 +191,7 @@ public final class MainActivity extends Activity {
             }
             if(classic[10]>0){
                 int score=classic[10]-1;classic[10]=0;
-                if(classic[19]>0){
-                    short[] pcm=Native.classicSound(state.data,score);stopClassicAudio();
-                    if(pcm!=null&&pcm.length>0)try{
-                        classicAudio=new android.media.AudioTrack.Builder().setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_GAME).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).setAudioFormat(new android.media.AudioFormat.Builder().setSampleRate(22050).setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT).build()).setTransferMode(android.media.AudioTrack.MODE_STATIC).setBufferSizeInBytes(pcm.length*2).build();
-                        classicAudio.setVolume(classic[19]==1?.25f:.5f);classicAudio.write(pcm,0,pcm.length);classicAudio.play();
-                    }catch(RuntimeException ex){stopClassicAudio();}
-                }
+                playClassicScore(score,classic[19]);
             }
             classicPixels=Native.classicFrame(state.data,classic,SystemClock.elapsedRealtime());picture.invalidate();
             if(classic[0]==10){handler.removeCallbacks(classicClock);connectMenu();}
@@ -189,6 +200,7 @@ public final class MainActivity extends Activity {
     }
     private void home(){
         handler.removeCallbacks(classicClock);stopClassicAudio();
+        visitReward=null;
         if(peerSession!=null){peerSession.close();peerSession=null;}
         generation++;battleAnimating=false;page="home";heading("A little adventure");
         LinearLayout controls=patchRow();for(int n=0;n<3;n++){final int key=n;patch(controls,n==0?"◀":n==1?"●":"▶",()->{openClassic(false);classicPress(key);});}
@@ -198,11 +210,7 @@ public final class MainActivity extends Activity {
             if(state.returnPending)note("Return pending. Walking and activities are paused until the console confirms the return.");
             if(state.revoked)note("This session was revoked. To recover this phone copy into a missing console target, use Receive phone copy on the console and Return Pokémon here.");
             if(state.active()&&!state.returnPending){
-                long[] info=Native.info(state.data);
-                button(info[Native.VISITOR]>0?"Wild visitor · free battle":"Poké Radar · 10 watts",()->openClassicActivity(0));
-                button("Dowsing · 3 watts",()->openClassicActivity(1));
                 if(state.battleRewardChoice>=0)button("Claim battle reward",this::claimBattleReward);
-                button("Your pack",this::pack);button("Trainer card",this::card);button("Connect",this::connectMenu);
             }
         }
         button("Settings",this::settings);button("Console Wi-Fi sync",this::syncScreen);updateHeader();
@@ -241,6 +249,7 @@ public final class MainActivity extends Activity {
     private void peerScreen(){
         if(peerSession==null||!page.equals("peer"))return;
         heading(peerSession.battle?"Friendly battle":"Nearby visit");if(!peerSession.remoteName.isEmpty())note(peerSession.remoteName);note(peerSession.message);
+        showVisit(peerSession.visitReward);
         byte[] frame=peerSession.frame();if(frame!=null){classicPixels=frame;picture.invalidate();}
         if(peerSession.canAccept())button(peerSession.battle?"Accept · 30 watts":"Start visit",()->{
             if(peerSession==null)return;
@@ -273,7 +282,15 @@ public final class MainActivity extends Activity {
         for(WalkerProfiles.Entry entry:WalkerStore.profileEntries(this))if(!entry.id.equals(state.profileId)){
             final String id=entry.id;
             button(entry.name,()->new AlertDialog.Builder(this).setTitle("Connect with "+entry.name+"?").setMessage("Both profiles are saved together before gifts are confirmed.").setPositiveButton("Connect",(d,w)->{
-                synchronized(WalkerStore.LOCK){try{String message=WalkerStore.visit(this,id);result("A friendly meeting",message);}catch(IOException ex){toast(ex.getMessage());home();}}
+                synchronized(WalkerStore.LOCK){
+                    try{
+                        int[] reward=WalkerStore.visit(this,id);
+                        generation++;page="visit";heading("A friendly meeting");
+                        showVisit(reward);
+                        note("Both gifts were saved. Meet again tomorrow.");
+                        button("Continue",this::home);
+                    }catch(IOException ex){toast(ex.getMessage());home();}
+                }
             }).setNegativeButton("Cancel",null).show());
         }
         button("Back",this::home);
@@ -646,7 +663,9 @@ public final class MainActivity extends Activity {
             RectF lcd=drawShell(canvas,cx,cy,r);
             synchronized(WalkerStore.LOCK){
                 byte[] pixels=null;
-                if(page.equals("peer")&&peerSession!=null)pixels=peerSession.frame();
+                if(visitReward!=null&&(page.equals("visit")||page.equals("peer")))
+                    pixels=Native.visitFrame(state.data,visitReward,(int)((SystemClock.elapsedRealtime()-visitStarted)/250));
+                else if(page.equals("peer")&&peerSession!=null)pixels=peerSession.frame();
                 else if(page.equals("classic"))pixels=classicPixels;
                 if(pixels==null&&state.data!=null&&!state.returnPending&&!state.revoked&&!state.returnCompleted)
                     pixels=Native.classicFrame(state.data,new int[40],SystemClock.elapsedRealtime());
@@ -662,7 +681,9 @@ public final class MainActivity extends Activity {
                 }
             }
             canvas.restore();paint.setAntiAlias(true);
-            if(page.equals("peer")||page.equals("classic"))postInvalidateDelayed(100);
+            if(page.equals("peer")||page.equals("classic")||
+                    (page.equals("visit")&&SystemClock.elapsedRealtime()-visitStarted<10000))
+                postInvalidateDelayed(100);
         }
     }
 }

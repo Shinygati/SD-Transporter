@@ -109,9 +109,31 @@ JNIEXPORT jshortArray JNICALL JNI_NAME(classicSound)(JNIEnv *env,jclass cls,jbyt
     jshortArray out=(*env)->NewShortArray(env,length);if(out&&length)(*env)->SetShortArrayRegion(env,out,0,length,(jshort *)pcm);free(pcm);return out;
 }
 
-JNIEXPORT jint JNICALL JNI_NAME(visit)(JNIEnv *env,jclass cls,jbyteArray data,jbyteArray peer,jlong now){
+JNIEXPORT jint JNICALL JNI_NAME(visit)(JNIEnv *env,jclass cls,jbyteArray data,jbyteArray peer,jlong now,jintArray details){
     (void)cls;uint8_t *a=bytes(env,data);if(!a)return 0;uint8_t *b=bytes(env,peer);if(!b){(*env)->ReleaseByteArrayElements(env,data,(jbyte *)a,JNI_ABORT);return 0;}
-    int result=walkerVisit(a,b,(uint32_t)now);(*env)->ReleaseByteArrayElements(env,peer,(jbyte *)b,JNI_ABORT);(*env)->ReleaseByteArrayElements(env,data,(jbyte *)a,0);return result;
+    WalkerVisitReward reward;
+    int result=walkerVisitWithReward(a,b,(uint32_t)now,&reward);
+    (*env)->ReleaseByteArrayElements(env,peer,(jbyte *)b,JNI_ABORT);
+    (*env)->ReleaseByteArrayElements(env,data,(jbyte *)a,0);
+    if(result>0&&details&&(*env)->GetArrayLength(env,details)==3){
+        const jint values[]={reward.notes,reward.itemIndex,reward.watts};
+        (*env)->SetIntArrayRegion(env,details,0,3,values);
+    }
+    return result;
+}
+JNIEXPORT jbyteArray JNICALL JNI_NAME(visitFrame)(JNIEnv *env,jclass cls,jbyteArray data,jintArray details,jint frame){
+    (void)cls;
+    if(!details||(*env)->GetArrayLength(env,details)!=3)return 0;
+    uint8_t *ee=bytes(env,data);if(!ee)return 0;
+    jint values[3];uint8_t pixels[WALKER_CLASSIC_PIXELS];
+    (*env)->GetIntArrayRegion(env,details,0,3,values);
+    WalkerVisitReward reward={values[0],values[1],values[2]};
+    int ok=walkerVisitFrame(ee,&reward,(unsigned)frame,pixels);
+    (*env)->ReleaseByteArrayElements(env,data,(jbyte *)ee,JNI_ABORT);
+    if(!ok)return 0;
+    jbyteArray out=(*env)->NewByteArray(env,sizeof(pixels));
+    if(out)(*env)->SetByteArrayRegion(env,out,0,sizeof(pixels),(jbyte *)pixels);
+    return out;
 }
 
 JNIEXPORT jintArray JNICALL JNI_NAME(menuIcon)(JNIEnv *env,jclass cls,jint kind){

@@ -1,5 +1,5 @@
 SD TRANSPORTER - POKEWALKER COMPANION USER GUIDE
-Version 1.6.3 - Updated: 9 November 2026
+Version 1.7.0 - Updated 13 November 2026
 
 This guide covers the 3DS, NDS and Android companions and the iPhone source
 port. The phone apps use the same walker progress and activities. The iPhone
@@ -19,12 +19,12 @@ are not overwritten. Back up the card first.
 
 3DS:
 - Run 3ds/pokewalker3ds/pokewalker3ds.3dsx from the Homebrew Launcher.
-  A CIA for the companion is not included in 1.6.3.
+  A CIA for the companion is not included in 1.7.0.
 NDS / DS Lite / DSi (and 3DS in DS mode):
 - Launch roms/nds/Pokewalker-NDS.nds from TWiLight Menu++, with working
   SD/DLDI access.
 Android:
-- Install the signed 1.6.3 APK over the existing app. Keeping the installed
+- Install the signed 1.7.0 APK over the existing app. Keeping the installed
   app's data preserves the active walker, saved consoles and handoff records.
   Never uninstall the app while it holds your Pokemon.
 

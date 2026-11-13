@@ -4,10 +4,10 @@ A graphical companion for SD Transporter's virtual Pokewalker `.walker` EEPROM f
 
 ## Install
 
-Copy the release ZIP's `SD/` contents to the root of your 3DS SD card. Run **3DS Pokewalker** in the Homebrew Launcher, or install the included `SD/cias/3DS-Pokewalker.cia` with your preferred CIA installer on a homebrew-enabled console. Both builds use the same `.walker` files. The CIA title ID is `000400000F7E1200`.
+Copy the release ZIP's `SD/` contents to the root of your 3DS SD card. Run **3DS Pokewalker** in the Homebrew Launcher, or install the included `SD/cia/3DS-Pokewalker.cia` with your preferred CIA installer on a homebrew-enabled console. Both builds use the same `.walker` files. The CIA title ID is `000400000F7E1200`.
 
 1. Start a virtual Pokewalker stroll in HGSS using SD Transporter.
-2. Keep its `.walker` file under `sd:/roms`, including a `saves` subfolder.
+2. The app searches `sdmc:/roms` by default. Press **X** to browse the SD card, **A** to open a folder, and **START** to scan that folder and its subfolders. Press **Y** in the picker to search `/roms` again.
 3. Open this app, select a walker containing a Pokémon, and press A to start walking. Empty walkers are marked and cannot be opened.
 4. Keep this app open to accumulate steps. Closing the lid counts as part of the open session; the elapsed sleep time is applied on wake. Press START to save and exit before returning your Pokémon in HGSS.
 
@@ -20,7 +20,7 @@ The main display shows **Stroll steps**, which returns to zero when the Pokémon
 ## Features
 
 - Two-screen graphical interface with larger text on both screens, wrapping instead of tiny autosizing, a clear selection highlight, forest background and next-watt progress bar. The original Pokewalker large portrait and animation are preserved, including the intentional crop present in some original portraits such as Ho-Oh. Both screens now enforce a readable minimum text size instead of shrinking labels.
-- Discovery restricted to `/roms` and non-hidden subfolders. Folder discovery has an activity bar; EEPROM validation has a completion bar. No fallback SD-root scan.
+- Recursive walker discovery and EEPROM validation show separate progress indicators. Choose the SD root in the folder picker to search the whole card.
 - Walking and battle sprites read from the user's EEPROM. No retail artwork, ROMs, saves or firmware are bundled.
 - Poké Radar costs 10 watts. Follow rustling patches, then attack, evade or catch. Species, levels, moves and step gates come from the active route.
 - Dowsing costs 3 watts: six patches, two attempts and a near/far hint. Items use the active route's table and step gates.

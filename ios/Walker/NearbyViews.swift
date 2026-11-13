@@ -65,6 +65,7 @@ private struct NearbyActivityView: View {
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:14) {
+                if let playback = session.visitPlayback { WalkerVisitDisplay(playback: playback) }
                 TimelineView(.periodic(from:.now,by:0.12)) { timeline in
                     let milliseconds=UInt32(truncatingIfNeeded:UInt64(ProcessInfo.processInfo.systemUptime*1000))
                     if let pixels=session.frame(ms:milliseconds) {

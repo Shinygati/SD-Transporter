@@ -396,21 +396,29 @@ int walkerChooseEncounter(uint8_t *ee, WalkerEncounter *out) {
                              ee[WALKER_ROUTE + 0x88 + selected]};
     return 1;
 }
-int walkerChooseItem(uint8_t *ee, unsigned *out) {
+static int chooseRouteItem(uint8_t *ee, unsigned *out, int dowsing) {
     WalkerInfo i;
     if (!walkerRead(ee, &i) || !i.hasPokemon)
         return 0;
     unsigned selected = 9;
-    for (unsigned n = 0; n < 10; n++)
-        if (i.todaySteps >= le16(ee + WALKER_ROUTE + 0xa0 + n * 2) &&
-            ((walkerRandom(ee) >> 3) % 100) < ee[WALKER_ROUTE + 0xb4 + n]) {
+    for (unsigned n = 0; n < 10; n++) {
+        if (i.todaySteps < le16(ee + WALKER_ROUTE + 0xa0 + n * 2))
+            continue;
+        unsigned roll = walkerRandom(ee) >> 3;
+        if (dowsing)
+            roll = (uint8_t)roll;
+        if (roll % 100 < ee[WALKER_ROUTE + 0xb4 + n]) {
             selected = n;
             break;
         }
+    }
     if (!validItem(le16(ee + WALKER_ROUTE + 0x8c + selected * 2)))
         return 0;
     *out = selected;
     return 1;
+}
+int walkerChooseItem(uint8_t *ee, unsigned *out) {
+    return chooseRouteItem(ee, out, 0);
 }
 /* Optional Gen IV rewards. Weights are per selection out of 10,000.
  * Rows: Master Ball, PP Max, PP Up, TMs, vitamins, Rare Candy, EV training,
@@ -438,10 +446,10 @@ int walkerExpandedReward(uint8_t *ee,unsigned *out,int battle) {
     *out=0x8000|id;return 1;
 }
 int walkerChooseItemEx(uint8_t *ee,unsigned *out,int expanded) {
-    if(!expanded)return walkerChooseItem(ee,out);
+    if(!expanded)return chooseRouteItem(ee,out,1);
     WalkerInfo info;if(!walkerRead(ee,&info)||!info.hasPokemon)return 0;
     if(walkerExpandedReward(ee,out,0))return 1;
-    return walkerChooseItem(ee,out);
+    return chooseRouteItem(ee,out,1);
 }
 static void social(uint8_t *ee, uint32_t stamp, WalkerReport *r) {
     WalkerInfo i;
@@ -779,7 +787,7 @@ void walkerBattleAction(uint8_t *ee, WalkerBattle *b, int action) {
 unsigned walkerFriendItemId(const uint8_t *ee,unsigned slot){
     return slot<10?le16(ee+0xcec8+slot*4):0;
 }
-int walkerVisit(uint8_t *ee,const uint8_t *peer,uint32_t now){
+int walkerVisitWithReward(uint8_t *ee,const uint8_t *peer,uint32_t now,WalkerVisitReward *reward){
     WalkerInfo a,b;
     if(!walkerRead(ee,&a)||!walkerRead(peer,&b)||!a.hasPokemon||!b.hasPokemon)return 0;
     const uint8_t *ownId=reliable(ee,ID1,ID2,104),*otherId=reliable(peer,ID1,ID2,104);
@@ -794,7 +802,8 @@ int walkerVisit(uint8_t *ee,const uint8_t *peer,uint32_t now){
     unsigned peerHour=metaValid(peer)&&meta(peer,M_HOUR)==now/3600?meta(peer,M_HSTEPS):0;
     uint32_t score=ownDay+peerDay+(uint16_t)((uint16_t)(ownHour+peerHour)*10);
     if(score>20000)score=20000;
-    unsigned index=(score>=20000?0:score>=10000?2:score>=5000?4:score>=2500?6:8)+(ownDay>peerDay?0:1);
+    unsigned notes=score>=20000?5:score>=10000?4:score>=5000?3:score>=2500?2:1;
+    unsigned index=(5-notes)*2+(ownDay>peerDay?0:1);
     unsigned id=walkerRouteItemId(ee,index),slot=0;
     while(slot<10&&walkerFriendItemId(ee,slot))slot++;
     if(slot<10&&!validItem(id))return 0;
@@ -805,8 +814,15 @@ int walkerVisit(uint8_t *ee,const uint8_t *peer,uint32_t now){
     uint8_t *info=ee+0xf6c0;memset(info,0,56);putbe(info,peerDay);info[4]=peerHour>>8;info[5]=peerHour;
     memcpy(info+8,otherId,4);memcpy(info+12,otherId+8,2);memcpy(info+14,peer+WALKER_ROUTE,2);
     memcpy(info+16,peer+WALKER_ROUTE+16,22);memcpy(info+38,otherId+0x48,16);info[54]=peer[WALKER_ROUTE+13];
+    info[55]=peer[WALKER_ROUTE+14]&1;
+    unsigned watts=0;
     int result;
-    if(slot==10){unsigned watts=score/200;if(!watts)watts=1;if(watts>99)watts=99;wattsAdd(ee,watts);event(ee,4,watts);result=2;}
+    if(slot==10){watts=score/200;if(!watts)watts=1;if(watts>99)watts=99;wattsAdd(ee,watts);event(ee,4,watts);result=2;}
     else {uint8_t *item=ee+0xcec8+slot*4;item[0]=id;item[1]=id>>8;item[2]=item[3]=0;diary(ee,now,index+1,0,id);event(ee,1,id);result=1;}
-    commitmeta(ee);return result;
+    commitmeta(ee);
+    if(reward)*reward=(WalkerVisitReward){notes,index,watts};
+    return result;
+}
+int walkerVisit(uint8_t *ee,const uint8_t *peer,uint32_t now){
+    return walkerVisitWithReward(ee,peer,now,NULL);
 }

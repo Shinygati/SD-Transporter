@@ -46,7 +46,7 @@ final class WalkerStore {
     static String profileName(Context context){synchronized(LOCK){get(context);return profiles.name(instance.profileId);}}
     static WalkerStore selectProfile(Context context,String id)throws IOException{synchronized(LOCK){get(context);profiles.select(id);instance=profiles.store(id);return instance;}}
     static WalkerStore createProfile(Context context,String name)throws IOException{synchronized(LOCK){get(context);String id=profiles.create(name);instance=profiles.store(id);return instance;}}
-    static String visit(Context context,String id)throws IOException{synchronized(LOCK){get(context);return profiles.visit(instance.profileId,id);}}
+    static int[] visit(Context context,String id)throws IOException{synchronized(LOCK){get(context);return profiles.visit(instance.profileId,id);}}
     static WalkerStore recoverVisits(Context context){synchronized(LOCK){instance=null;profiles=null;return get(context);}}
     static void renameProfile(Context context,String name)throws IOException{synchronized(LOCK){get(context);profiles.rename(instance.profileId,name);}}
     boolean tracking(){return active()&&mode!=0&&!returnPending&&!syncing&&error.isEmpty();}
