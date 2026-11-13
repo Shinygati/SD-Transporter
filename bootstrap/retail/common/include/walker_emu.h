@@ -95,6 +95,7 @@ typedef struct WalkerControl {
 	unsigned int selectLatch;  /* SELECT held since a link started: no re-arm until released */
 	unsigned int cooldown;     /* idle reads left before advertising again after a session */
 	unsigned int wipeStart;    /* game VBlank count when the SELECT + LEFT hold began */
+	unsigned int linkMode;     /* identity command the game sent this link (0x60 = receive a gift) */
 } WalkerControl;
 
 #define WALKER_ASSERT(name, cond) typedef char walker_assert_##name[(cond) ? 1 : -1]

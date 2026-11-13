@@ -361,6 +361,21 @@ static void endWalk(WalkerControl *c) {
 	eeFill(c, EE_STROLL_CLOCK, 0xFF, 10);
 }
 
+/* "Receive a gift": HGSS sends its identity with 0x60, reads 0xCE80-0xDBCB
+ * (watts copy, caught Pokemon, dowsed and peer-gift items) and the met-peer
+ * block, pings, then sends CONNECT_COMPLETE. It never writes or resets
+ * anything, so the walker itself must give up what was handed over, keeping
+ * its Pokemon, route, steps, journal and met-peer list (the once-a-day peer
+ * rule). Without this the same items and Pokemon could be received again. */
+static void giftTaken(WalkerControl *c) {
+	u8 *hd = c->scratch;
+	reliableRead(c, EE_HEALTH_1, EE_HEALTH_2, hd, EE_HEALTH_SIZE);
+	hd[HD_WATTS] = hd[HD_WATTS + 1] = 0;
+	reliableWrite(c, EE_HEALTH_1, EE_HEALTH_2, hd, EE_HEALTH_SIZE);
+	eeFill(c, EE_CURRENT_WATTS_COPY, 0, 2);
+	eeFill(c, EE_CAUGHT_SUMMARY, 0, 0x64);
+}
+
 /* ---- HGSS empty-move PP fix ------------------------------------------------ */
 
 /* Overlay 112 builds every Pokemon it receives from a walker (caught slots and
@@ -465,6 +480,7 @@ static void request(WalkerControl *c, u32 len) {
 		c->ownSession[2] = seed >> 16; c->ownSession[3] = seed >> 24;
 		for (u32 i = 0; i < 4; i++) c->session[i] = c->ownSession[i] ^ p[4 + i];
 		c->state = 1;
+		c->linkMode = 0;
 		c->armed = 0;
 		c->selectLatch = 1; /* holding SELECT through the transfer must not re-arm */
 		answer(c, CMD_SLAVE_ACK, EXTRA_TO_WALKER, 0, 1);
@@ -501,6 +517,7 @@ static void request(WalkerControl *c, u32 len) {
 	}
 	case 0x32: case 0x40: case 0x52: case 0x60: { /* game sends its identity */
 		const u32 n = len - 8 < sizeof(c->peer) ? len - 8 : sizeof(c->peer);
+		c->linkMode = cmd;
 		copyBytes(c->peer, p + 8, n);
 		for (u32 i = n; i < sizeof(c->peer); i++) c->peer[i] = 0;
 		const u8 *t = c->peer + ID_LAST_SYNC;
@@ -540,7 +557,10 @@ static void request(WalkerControl *c, u32 len) {
 		answer(c, CMD_NORX_ACK, EXTRA_FROM_WALKER, 0, 0);
 		return;
 	case CMD_CONNECT_COMPLETE:
-		/* Last exchange of a session: answer, then go idle like the walker. */
+		/* Last exchange of a session: answer, then go idle like the walker.
+		 * A gift link only completes after HGSS has read everything. */
+		if (c->linkMode == 0x60) giftTaken(c);
+		c->linkMode = 0;
 		answer(c, CMD_CONNECT_COMPLETE_ACK, EXTRA_FROM_WALKER, 0, 0);
 		c->state = 0;
 		c->cooldown = WALKER_COOLDOWN_READS;
